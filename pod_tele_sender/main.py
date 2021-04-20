@@ -5,7 +5,7 @@ A telegram bot service that receives a message and sends it to socket
 import json
 import socket
 import telebot  # type: ignore
-from config import get_settings
+from pod_tele_sender.config import get_settings
 
 
 bot = telebot.TeleBot(get_settings("tg_token"))
