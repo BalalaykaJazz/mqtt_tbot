@@ -7,7 +7,6 @@ import socket
 import telebot  # type: ignore
 from config import get_settings
 
-
 bot = telebot.TeleBot(get_settings("tg_token"))
 
 WELCOME_MESSAGE = 'Нужно отправить мне текст в формате json, чтобы я переправил его в MQTT. \n' \
@@ -67,12 +66,15 @@ def get_message(message: telebot.types.Message) -> None:
     try:
         if check_message(message.text):
             result = send_message(message.text)
-            print(f"Send message successful: {result}")
+            message_answer = f"Send message successful: {result}"
 
     except FormatError:
-        print("Полученное сообщение не соответствует требуемому формату")
+        message_answer = "Полученное сообщение не соответствует требуемому формату"
     except ConnectionRefusedError:
-        print("Сервис 'MQTT publisher' не запущен")
+        message_answer = "Сервис 'MQTT publisher' не запущен"
+
+    bot.send_message(message.from_user.id, message_answer)
+    print(message_answer)
 
 
 if __name__ == "__main__":

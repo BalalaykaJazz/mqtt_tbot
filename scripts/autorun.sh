@@ -1,4 +1,4 @@
 #!/bin/bash
 
-cd ~mqtt/tsender
-exec ../venv/bin/python main.py
+cd ~mqtt/mqtt_tbot
+exec ../venv/bin/python mqtt_tbot_run.py
