@@ -63,6 +63,8 @@ def send_message(message: str) -> bool:
 def get_message(message: telebot.types.Message) -> None:
     """The received message is forwarded to the 'MQTT publisher' service"""
 
+    message_answer = ""
+
     try:
         if check_message(message.text):
             result = send_message(message.text)
@@ -73,8 +75,9 @@ def get_message(message: telebot.types.Message) -> None:
     except ConnectionRefusedError:
         message_answer = "Сервис 'MQTT publisher' не запущен"
 
-    bot.send_message(message.from_user.id, message_answer)
-    print(message_answer)
+    if message_answer:
+        bot.send_message(message.from_user.id, message_answer)
+        print(message_answer)
 
 
 if __name__ == "__main__":
