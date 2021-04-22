@@ -5,7 +5,8 @@ A telegram bot service that receives a message and sends it to socket
 import json
 import socket
 import telebot  # type: ignore
-from config import get_settings
+from telebot import types  # type: ignore
+from config import get_settings  # type: ignore
 
 bot = telebot.TeleBot(get_settings("tg_token"))
 
@@ -18,11 +19,18 @@ class FormatError(Exception):
     """Common class for received file format errors"""
 
 
+def create_buttons():
+    """Create buttons to help user"""
+    keyboard = types.ReplyKeyboardMarkup()
+    keyboard.add(types.KeyboardButton("/help"))
+    return keyboard
+
+
 @bot.message_handler(commands=['start', 'help'])
 def send_welcome(message: telebot.types.Message) -> None:
     """Displays a tip to the user if a start or help command is received"""
 
-    bot.send_message(message.from_user.id, WELCOME_MESSAGE)
+    bot.send_message(message.from_user.id, WELCOME_MESSAGE, reply_markup=create_buttons())
 
 
 def check_message(message: str) -> bool:
