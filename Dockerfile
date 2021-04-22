@@ -2,7 +2,7 @@ FROM python:3.7-alpine3.8
 
 RUN pip install pyTelegramBotAPI
 
-# COPY ./requirements.txt /tmp/
-COPY ./pod_mqtt_tbot /tmp/
+# COPY ./requirements.txt /src/
+COPY ./pod_mqtt_tbot /src/
 
-CMD ["python", "/tmp/mqtt_tbot_run.py"]
+CMD ["python", "/src/mqtt_tbot_run.py"]
