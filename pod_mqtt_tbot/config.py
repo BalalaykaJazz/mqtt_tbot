@@ -5,16 +5,51 @@ import json
 MAIN_SETTINGS_PATH = "settings/settings.json"
 
 
+class SettingsError(Exception):
+    """Common class for settings file errors"""
+
+
 def get_full_path(file_name: str) -> str:
     """Return full path to file"""
     return os.path.join(os.path.dirname(__file__), file_name)
 
 
-def get_settings(setting_name: str) -> str:
-    """Return settings for connecting to telegram bot or socket"""
-    with open(get_full_path(MAIN_SETTINGS_PATH), encoding="utf-8") as file:
-        settings = json.load(file)
+def load_settings() -> dict:
+    """Return loaded settings from settings.json"""
 
-    requested_settings = settings.get(setting_name.lower())
+    try:
+        with open(get_full_path(MAIN_SETTINGS_PATH), encoding="utf-8") as file:
+            loaded_settings = json.load(file)
 
-    return requested_settings
+            required_fields = ("host", "port", "name", "tg_token")
+            for field in required_fields:
+                if field not in loaded_settings:
+                    print(f"Конфигурационный файл должен содержать поле {field}")
+                    raise SettingsError
+
+            for field, value in loaded_settings.items():
+                if not value:
+                    print(f"В конфигурационном файле не указано значение поля {field}")
+                    raise SettingsError
+
+    except FileNotFoundError as err:
+        print("Ненайден конфигурационный файл settings.json")
+        raise SettingsError from err
+    except json.decoder.JSONDecodeError as err:
+        print("Конфигурационный файл имеет некорректный формат")
+        raise SettingsError from err
+
+    return loaded_settings
+
+
+def get_settings(settings: dict, setting_name: str) -> str:
+    """Return required settings"""
+
+    try:
+        return settings[setting_name]
+    except KeyError as err:
+        print(f"Конфигурационный файл должен содержать поле {setting_name}")
+        raise SettingsError from err
+    except TypeError as err:
+        print("Конфигурационный файл имеет некорректный формат")
+        raise SettingsError from err
