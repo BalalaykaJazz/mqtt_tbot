@@ -156,7 +156,6 @@ def get_message(message: telebot.types.Message) -> None:
         ready_text_message = prepare_message(message.text, message.from_user.id)
 
         if ready_text_message:
-            print(ready_text_message)
             try:
                 if check_message(ready_text_message):
                     result = send_message(ready_text_message)
