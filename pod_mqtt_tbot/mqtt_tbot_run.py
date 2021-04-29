@@ -7,7 +7,7 @@ import socket
 import sys
 import telebot  # type: ignore
 from telebot import types  # type: ignore
-from pod_mqtt_tbot.config import get_settings, load_settings, SettingsError  # type: ignore
+from config import get_settings, load_settings, SettingsError  # type: ignore
 
 
 class FormatError(Exception):
