@@ -3,6 +3,7 @@ import os
 import json
 
 MAIN_SETTINGS_PATH = "settings/settings.json"
+TOPICS_PATH = "settings/topics.json"
 
 
 class SettingsError(Exception):
@@ -38,6 +39,18 @@ def load_settings() -> dict:
     except json.decoder.JSONDecodeError as err:
         print("Конфигурационный файл имеет некорректный формат")
         raise SettingsError from err
+
+    try:
+        with open(get_full_path(TOPICS_PATH), encoding="utf-8") as file:
+            ready_topics = json.load(file)
+            loaded_settings["topic_templates"] = ready_topics.values() if isinstance(ready_topics, dict) else []
+
+    except FileNotFoundError:
+        print("Ненайден файл topics.json")
+        loaded_settings["topic_templates"] = []
+    except json.decoder.JSONDecodeError:
+        print("Файл topics.json имеет некорректный формат")
+        loaded_settings["topic_templates"] = []
 
     return loaded_settings
 
