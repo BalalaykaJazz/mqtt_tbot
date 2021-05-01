@@ -4,6 +4,7 @@ A telegram bot service that receives a message and sends it to socket
 
 import json
 import socket
+import ssl
 import sys
 import telebot  # type: ignore
 from telebot import types  # type: ignore
@@ -113,7 +114,9 @@ def check_message(message: str) -> bool:
 def send_message(message: str) -> bool:
     """Sending received message to service MQTT publisher"""
 
-    server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    server_socket = ssl.wrap_socket(socket.socket(socket.AF_INET, socket.SOCK_STREAM),
+                                    get_settings(_settings, "ssl.key"),
+                                    get_settings(_settings, "ssl.crt"))
     server_socket.connect((get_settings(_settings, "host"), get_settings(_settings, "port")))
 
     if message:
@@ -185,4 +188,4 @@ if __name__ == "__main__":
         bot.polling(none_stop=True)
     except ReadTimeout:
         print("Read timed out")
-        exit(0)
+        exit(1)

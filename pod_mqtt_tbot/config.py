@@ -4,6 +4,8 @@ import json
 
 MAIN_SETTINGS_PATH = "settings/settings.json"
 TOPICS_PATH = "settings/topics.json"
+SSL_KEYFILE_PATH = "settings/ssl.key"
+SSL_CERTFILE_PATH = "settings/ssl.crt"
 
 
 class SettingsError(Exception):
@@ -21,6 +23,9 @@ def load_settings() -> dict:
     try:
         with open(get_full_path(MAIN_SETTINGS_PATH), encoding="utf-8") as file:
             loaded_settings = json.load(file)
+
+            loaded_settings["ssl.key"] = get_full_path(SSL_KEYFILE_PATH)
+            loaded_settings["ssl.crt"] = get_full_path(SSL_CERTFILE_PATH)
 
             required_fields = ("host", "port", "name", "tg_token")
             for field in required_fields:
