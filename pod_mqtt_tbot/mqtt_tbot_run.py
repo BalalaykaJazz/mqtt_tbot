@@ -114,9 +114,13 @@ def check_message(message: str) -> bool:
 def send_message(message: str) -> bool:
     """Sending received message to service MQTT publisher"""
 
-    server_socket = ssl.wrap_socket(socket.socket(socket.AF_INET, socket.SOCK_STREAM),
-                                    get_settings(_settings, "ssl.key"),
-                                    get_settings(_settings, "ssl.crt"))
+    if get_settings(_settings, "use_ssl"):
+        server_socket = ssl.wrap_socket(socket.socket(socket.AF_INET, socket.SOCK_STREAM),
+                                        get_settings(_settings, "ssl.key"),
+                                        get_settings(_settings, "ssl.crt"))
+    else:
+        server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+
     server_socket.connect((get_settings(_settings, "host"), get_settings(_settings, "port")))
 
     if message:

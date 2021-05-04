@@ -6,7 +6,10 @@ from pod_mqtt_tbot import config  # type: ignore
 def test_load_settings():
     """При считывании настроек должен возвращаться словарь с обязательным набором ключей"""
 
-    expected = {"host": "localhost", "port": 80, "name": "unknown", "tg_token": "123", "topic_templates": []}
+    expected = {"host": "localhost", "port": 80,
+                "name": "unknown", "tg_token": "123",
+                "topic_templates": [],
+                "use_ssl": False}
     returned_value = config.load_settings()
 
     assert expected.keys() == returned_value.keys()

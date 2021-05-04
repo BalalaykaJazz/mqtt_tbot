@@ -24,19 +24,20 @@ def load_settings() -> dict:
         with open(get_full_path(MAIN_SETTINGS_PATH), encoding="utf-8") as file:
             loaded_settings = json.load(file)
 
-            loaded_settings["ssl.key"] = get_full_path(SSL_KEYFILE_PATH)
-            loaded_settings["ssl.crt"] = get_full_path(SSL_CERTFILE_PATH)
-
-            required_fields = ("host", "port", "name", "tg_token")
+            required_fields = ("host", "port", "name", "tg_token", "use_ssl")
             for field in required_fields:
                 if field not in loaded_settings:
                     print(f"Конфигурационный файл должен содержать поле {field}")
                     raise SettingsError
 
             for field, value in loaded_settings.items():
-                if not value:
+                if not value and not isinstance(value, bool):
                     print(f"В конфигурационном файле не указано значение поля {field}")
                     raise SettingsError
+
+            if loaded_settings.get("use_ssl"):
+                loaded_settings["ssl.key"] = get_full_path(SSL_KEYFILE_PATH)
+                loaded_settings["ssl.crt"] = get_full_path(SSL_CERTFILE_PATH)
 
     except FileNotFoundError as err:
         print("Ненайден конфигурационный файл settings.json")

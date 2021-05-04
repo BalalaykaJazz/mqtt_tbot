@@ -1,3 +1,4 @@
 # Project exclude paths
 /venv/
 /pod_mqtt_tbot/settings/
+/pod_mqtt_tbot/settings/settings.json
