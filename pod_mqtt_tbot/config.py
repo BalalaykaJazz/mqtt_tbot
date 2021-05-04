@@ -4,8 +4,7 @@ import json
 
 MAIN_SETTINGS_PATH = "settings/settings.json"
 TOPICS_PATH = "settings/topics.json"
-SSL_KEYFILE_PATH = "settings/ssl.key"
-SSL_CERTFILE_PATH = "settings/ssl.crt"
+SSL_KEYFILE_PATH = "settings/server_key.pem"
 
 
 class SettingsError(Exception):
@@ -36,8 +35,7 @@ def load_settings() -> dict:
                     raise SettingsError
 
             if loaded_settings.get("use_ssl"):
-                loaded_settings["ssl.key"] = get_full_path(SSL_KEYFILE_PATH)
-                loaded_settings["ssl.crt"] = get_full_path(SSL_CERTFILE_PATH)
+                loaded_settings["SSL_KEYFILE_PATH"] = get_full_path(SSL_KEYFILE_PATH)
 
     except FileNotFoundError as err:
         print("Ненайден конфигурационный файл settings.json")

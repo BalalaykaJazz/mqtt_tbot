@@ -3,7 +3,7 @@ A telegram bot service that receives a message and sends it to socket
 """
 
 import json
-import socket
+from socket import socket, AF_INET, SOCK_STREAM
 import ssl
 import sys
 import telebot  # type: ignore
@@ -114,12 +114,12 @@ def check_message(message: str) -> bool:
 def send_message(message: str) -> bool:
     """Sending received message to service MQTT publisher"""
 
+    server_socket = socket(AF_INET, SOCK_STREAM)
+
     if get_settings(_settings, "use_ssl"):
-        server_socket = ssl.wrap_socket(socket.socket(socket.AF_INET, socket.SOCK_STREAM),
-                                        get_settings(_settings, "ssl.key"),
-                                        get_settings(_settings, "ssl.crt"))
-    else:
-        server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        server_socket = ssl.wrap_socket(server_socket,
+                                        cert_reqs=ssl.CERT_REQUIRED,
+                                        ca_certs=get_settings(_settings, "SSL_KEYFILE_PATH"))
 
     server_socket.connect((get_settings(_settings, "host"), get_settings(_settings, "port")))
 
