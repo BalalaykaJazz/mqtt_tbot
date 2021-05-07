@@ -16,6 +16,6 @@ def test_check_message_exception(test_example):
 def test_check_message_return():
     """Если полученное сообщение имеет корректный формат, то функция должна возвращать истину"""
 
-    correct = '{"topic": "test", "message": "test"}'
+    correct = '{"topic": "test", "message": "test", "user": "test", "password": "test"}'
     returned_value = mqtt_tbot_run.is_message_correct(correct)
     assert returned_value is True
