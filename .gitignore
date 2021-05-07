@@ -2,3 +2,4 @@
 /venv/
 /pod_mqtt_tbot/settings/
 /pod_mqtt_tbot/settings/settings.json
+/pod_mqtt_tbot/settings/topics.json
