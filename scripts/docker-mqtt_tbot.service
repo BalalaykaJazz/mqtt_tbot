@@ -17,7 +17,7 @@ Group=root
 # If using Unix socket: tells systemd to create the /run/gitea folder, which will contain the gitea.sock file
 # (manually creating /run/gitea doesn't work, because it would not persist across reboots)
 #RuntimeDirectory=gitea
-ExecStart=docker run --rm --name iot_mqtt_tbot iot_mqtt_tbot:latest
+ExecStart=docker run --rm --network host --name iot_mqtt_tbot iot_mqtt_tbot:latest
 KillSignal=SIGINT
 Restart=always
 #Environment=USER=git HOME=/home/git GITEA_WORK_DIR=/var/lib/gitea
