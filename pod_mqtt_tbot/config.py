@@ -4,7 +4,7 @@ import json
 
 MAIN_SETTINGS_PATH = "settings/settings.json"
 TOPICS_PATH = "settings/topics.json"
-SSL_KEYFILE_PATH = "settings/server_key.pem"
+SSL_KEYFILE_PATH = "settings/server_cert.pem"
 
 
 class SettingsError(Exception):

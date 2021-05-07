@@ -10,12 +10,12 @@ def test_check_message_exception(test_example):
     """Если полученное сообщение имеет некорректный формат, то функция должна бросать исключения"""
 
     with pytest.raises(mqtt_tbot_run.FormatError):
-        mqtt_tbot_run.check_message(test_example)
+        mqtt_tbot_run.is_message_correct(test_example)
 
 
 def test_check_message_return():
     """Если полученное сообщение имеет корректный формат, то функция должна возвращать истину"""
 
     correct = '{"topic": "test", "message": "test"}'
-    returned_value = mqtt_tbot_run.check_message(correct)
+    returned_value = mqtt_tbot_run.is_message_correct(correct)
     assert returned_value is True
