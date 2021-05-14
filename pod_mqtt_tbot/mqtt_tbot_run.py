@@ -190,6 +190,23 @@ def send_message(message: str) -> bool:
     return False
 
 
+def check_user_password(user: str, password: str) -> str:
+    """
+    Проверка корректности введенного пользователя и пароля.
+
+    Возвращаемое значение: строка с результатом отправки сообщения.
+    """
+
+    test_message = {"user": user,
+                    "password": encode_password(password),
+                    "topic": "",
+                    "message": "test_auth_message"}
+
+    state = send_message(json.dumps(test_message))
+
+    return "Авторизация завершена" if state is True else "Неверные имя пользователя или пароль"
+
+
 def message_processing(message: str, id_message: int, chat_id: int) -> dict:
     """
     Обработка ввода сообщения пользователем.
@@ -224,10 +241,11 @@ def message_processing(message: str, id_message: int, chat_id: int) -> dict:
         cur_state["expected_text"] = "password"
 
     elif cur_state["expected_text"] == "password":
-        # Пользователь ввел пароль. Завершим авторизацию.
+        # Пользователь ввел пароль. Проверим корректность введенных данных и завершим авторизацию.
         cur_state["password"] = message
+
         bot.send_message(id_message,
-                         "Авторизация завершена.",
+                         check_user_password(cur_state["user"], cur_state["password"]),
                          reply_markup=create_common_buttons(chat_id))
         cur_state["expected_text"] = ""
 
@@ -291,7 +309,7 @@ def get_message(message: telebot.types.Message) -> None:
                 if is_message_correct(current_message):
                     # Сообщение преобразовывается в строку и отправляется.
                     result = send_message(json.dumps(current_message))
-                    message_answer = f"Send message successful: {result}"
+                    message_answer = f"Статус отправки сообщения: {result}"
                 else:
                     message_answer = ""
 
