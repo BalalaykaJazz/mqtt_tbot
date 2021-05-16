@@ -9,7 +9,7 @@ def test_load_settings():
     expected = {"host": "localhost", "port": 80,
                 "name": "unknown", "tg_token": "123",
                 "topic_templates": [],
-                "use_ssl": False}
+                "use_ssl": False, "salt": ""}
     returned_value = config.load_settings()
 
     assert expected.keys() == returned_value.keys()

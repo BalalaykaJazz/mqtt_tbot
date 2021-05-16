@@ -208,7 +208,8 @@ def check_user_password(user: str, password: str) -> str:
     """
 
     test_message = {"user": user,
-                    "password": encode_password(password),
+                    "password": encode_password(password,
+                                                get_settings(_settings, "salt")),
                     "topic": "",
                     "message": "/check_auth"}
 
@@ -239,7 +240,8 @@ def message_processing(message: str, id_message: int, chat_id: int) -> dict:
         current_message = {"topic": cur_state["selected_topic"],
                            "message": message,
                            "user": cur_state["user"],
-                           "password": encode_password(cur_state["password"])}
+                           "password": encode_password(cur_state["password"],
+                                                       get_settings(_settings, "salt"))}
 
         cur_state["expected_text"] = ""
         cur_state["selected_topic"] = ""
