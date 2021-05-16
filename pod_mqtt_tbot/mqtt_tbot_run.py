@@ -5,12 +5,17 @@
 
 import json
 import ssl
-from socket import socket, AF_INET, SOCK_STREAM
+import socket
 import telebot  # type: ignore
-from user_auth import encode_password
+from user_auth import encode_password  # type: ignore
 from telebot import types  # type: ignore
-from requests.exceptions import ReadTimeout
+from requests.exceptions import ReadTimeout  # type: ignore
 from config import get_settings, load_settings, SettingsError  # type: ignore
+
+MESSAGE_STATUS_SUCCESSFUL = "OK"
+MESSAGE_AUTH_SUCCESSFUL = "Авторизация завершена"
+MESSAGE_AUTH_DENIED = "Неверные имя пользователя или пароль"
+SOCKET_TIMEOUT = 10
 
 
 class FormatError(Exception):
@@ -165,29 +170,34 @@ def is_message_correct(message: dict) -> bool:
     return True
 
 
-def send_message(message: str) -> bool:
+def send_message(message: str) -> str:
     """
     Введенное пользователем сообщение отправляется в сокет - для сервиса MQTT publisher.
     Возвращаемое значение: признак успеха отправки.
     """
 
-    server_socket = socket(AF_INET, SOCK_STREAM)
+    socket.setdefaulttimeout(SOCKET_TIMEOUT)
+    server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 
     if get_settings(_settings, "use_ssl"):
         server_socket = ssl.wrap_socket(server_socket,
                                         cert_reqs=ssl.CERT_REQUIRED,
                                         ca_certs=get_settings(_settings, "SSL_KEYFILE_PATH"))
 
-    server_socket.connect((get_settings(_settings, "host"), get_settings(_settings, "port")))
+    try:
+        server_socket.connect((get_settings(_settings, "host"), get_settings(_settings, "port")))
 
-    if message:
-        server_socket.send(message.encode())
-        answer = server_socket.recv(1024).decode("utf-8")
-        server_socket.close()
-        return answer == "HTTP/1.1 200 OK"
+        if message:
+            server_socket.send(message.encode())
+            answer = server_socket.recv(1024).decode("utf-8")
+            server_socket.close()
+            return answer
+
+    except socket.timeout:
+        return "Превышено время ожидания ответа"
 
     server_socket.close()
-    return False
+    return "Неизвестная ошибка отправки сообщения"
 
 
 def check_user_password(user: str, password: str) -> str:
@@ -200,11 +210,11 @@ def check_user_password(user: str, password: str) -> str:
     test_message = {"user": user,
                     "password": encode_password(password),
                     "topic": "",
-                    "message": "test_auth_message"}
+                    "message": "/check_auth"}
 
     state = send_message(json.dumps(test_message))
 
-    return "Авторизация завершена" if state is True else "Неверные имя пользователя или пароль"
+    return MESSAGE_AUTH_SUCCESSFUL if state == MESSAGE_STATUS_SUCCESSFUL else MESSAGE_AUTH_DENIED
 
 
 def message_processing(message: str, id_message: int, chat_id: int) -> dict:
@@ -309,7 +319,7 @@ def get_message(message: telebot.types.Message) -> None:
                 if is_message_correct(current_message):
                     # Сообщение преобразовывается в строку и отправляется.
                     result = send_message(json.dumps(current_message))
-                    message_answer = f"Статус отправки сообщения: {result}"
+                    message_answer = f"Ответ сервиса: {result}"
                 else:
                     message_answer = ""
 
