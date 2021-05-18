@@ -1,8 +1,8 @@
 """
 Создается телеграм бот, который получает сообщения от пользователей
 и отправляет их в сокет для сервиса mqtt_publisher.
+Сообщениями можно управлять своими устройствами или получать от них информацию.
 """
-
 import json
 import ssl
 import socket
@@ -10,35 +10,29 @@ import telebot  # type: ignore
 from user_auth import encode_password  # type: ignore
 from telebot import types  # type: ignore
 from requests.exceptions import ReadTimeout  # type: ignore
-from config import get_settings, load_settings, SettingsError  # type: ignore
+from config import get_settings, SettingsError  # type: ignore
 
 MESSAGE_STATUS_SUCCESSFUL = "OK"
 MESSAGE_AUTH_SUCCESSFUL = "Авторизация завершена"
 MESSAGE_AUTH_DENIED = "Неверные имя пользователя или пароль"
 MESSAGE_CONNECTION_LOST = "Потеряно соединение с сервисом mqtt publisher"
 SOCKET_TIMEOUT = 10
+WELCOME_MESSAGE = "Сначала нужно авторизироваться через кнопку sign in. \n" \
+                  "Для начала ввода сообщения воспользуйтесь кнопкой create_message. \n"
+
+
+def start_bot() -> telebot:
+    """Создание телеграм бота"""
+
+    return telebot.TeleBot(get_settings("tg_token"))
+
+
+current_states: dict = {}
+bot = start_bot()
 
 
 class FormatError(Exception):
-    """Общий класс для ошибок в формате полученных сообщений."""
-
-
-def read_settings() -> dict:
-    """
-    Считываются основные настройки программы. В случае некорректных настроек программа завершается.
-    Возвращаемое значение: словарь с настройками подключения к боту и сокету.
-    """
-
-    try:
-        loaded_settings = load_settings()
-    except SettingsError:
-        raise SystemExit("Работа программы завершена")
-    return loaded_settings
-
-
-def create_bot() -> telebot:
-    """Создается телеграм бот"""
-    return telebot.TeleBot(get_settings(_settings, "tg_token"))
+    """Исключение для ошибок в формате полученных сообщений."""
 
 
 def get_current_state(chat_id: int) -> dict:
@@ -62,14 +56,6 @@ def get_current_state(chat_id: int) -> dict:
     return current_states[chat_id_str]
 
 
-_settings = read_settings()
-bot = create_bot()
-current_states: dict = {}
-
-WELCOME_MESSAGE = "Сначала нужно авторизироваться через кнопку sign in. \n" \
-                  "Для начала ввода сообщения воспользуйтесь кнопкой create_message. \n"
-
-
 def create_common_buttons(chat_id: int) -> types.ReplyKeyboardMarkup:
     """
     Создаются основные кнопки для взаимодействия с пользователем.
@@ -89,7 +75,10 @@ def create_common_buttons(chat_id: int) -> types.ReplyKeyboardMarkup:
 
 @bot.message_handler(commands=['start', 'help'])
 def send_welcome(message: telebot.types.Message) -> None:
-    """Выводится стартовая информация с подсказками пользователю."""
+    """
+    Выводится стартовая информация с подсказками пользователю,
+    а так же основные кнопки управления.
+    """
 
     bot.send_message(message.from_user.id,
                      WELCOME_MESSAGE,
@@ -104,7 +93,7 @@ def create_topic_buttons() -> types.InlineKeyboardMarkup:
     """
 
     keyboard = types.InlineKeyboardMarkup()
-    for topic in get_settings(_settings, "topic_templates"):
+    for topic in get_settings("topic_templates"):
         keyboard.add(types.InlineKeyboardButton(topic, callback_data=topic))
 
     keyboard.add(types.InlineKeyboardButton("manual", callback_data="manual"))
@@ -180,13 +169,13 @@ def send_message(message: str) -> str:
     socket.setdefaulttimeout(SOCKET_TIMEOUT)
     server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 
-    if get_settings(_settings, "use_ssl"):
+    if get_settings("use_ssl"):
         server_socket = ssl.wrap_socket(server_socket,
                                         cert_reqs=ssl.CERT_REQUIRED,
-                                        ca_certs=get_settings(_settings, "SSL_KEYFILE_PATH"))
+                                        ca_certs=get_settings("SSL_KEYFILE_PATH"))
 
     try:
-        server_socket.connect((get_settings(_settings, "host"), get_settings(_settings, "port")))
+        server_socket.connect((get_settings("host"), get_settings("port")))
 
         if message:
             server_socket.send(message.encode())
@@ -349,12 +338,10 @@ def get_message(message: telebot.types.Message) -> None:
 
 if __name__ == "__main__":
 
-    try:
-        BOT_NAME = get_settings(_settings, "name")
-    except SettingsError:
-        BOT_NAME = "unknown"
+    if not get_settings("correctly"):
+        SystemExit("Ошибка при загрузке настроек. Работа программы завершена")
 
-    print(f"Сервис запущен. Подключен бот {BOT_NAME}")
+    print(f"Сервис запущен. Подключен бот {get_settings('name')}")
 
     try:
         bot.polling(none_stop=True)
