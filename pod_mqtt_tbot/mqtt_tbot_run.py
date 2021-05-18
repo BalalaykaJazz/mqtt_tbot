@@ -10,7 +10,7 @@ import telebot  # type: ignore
 from user_auth import encode_password  # type: ignore
 from telebot import types  # type: ignore
 from requests.exceptions import ReadTimeout  # type: ignore
-from config import get_settings, SettingsError  # type: ignore
+from config import get_settings  # type: ignore
 
 MESSAGE_STATUS_SUCCESSFUL = "OK"
 MESSAGE_AUTH_SUCCESSFUL = "Авторизация завершена"
@@ -27,33 +27,61 @@ def start_bot() -> telebot:
     return telebot.TeleBot(get_settings("tg_token"))
 
 
-current_states: dict = {}
+clients_state: dict = {}
 bot = start_bot()
+
+
+class CurrentUserState:
+    """
+    Класс отражает состояние работы с пользователем на текущий момент.
+
+    selected_topic - выбранный пользователем топик для отправки в mqtt.
+    expected_text - введенный пользователем текст сообщения для отправки.
+    user и password - логин и пароль текущего пользователя.
+    salt - соль для хеширования пароля пользователя.
+    """
+
+    def __init__(self):
+        self.selected_topic = ""
+        self.expected_text = ""
+        self.user = ""
+        self.password = ""
+        self.salt = ""
+
+    def set_state(self, state_name: str, value: str):
+        """Записывается новое состояние."""
+        setattr(self, state_name, value)
+
+    def reset_messages(self):
+        """Сбросить состояния для ввода новых сообщений"""
+        self.selected_topic = ""
+        self.expected_text = ""
+
+    def reset_user_auth(self):
+        """Сброс логина и пароля"""
+        self.user = ""
+        self.password = ""
+        self.salt = ""
 
 
 class FormatError(Exception):
     """Исключение для ошибок в формате полученных сообщений."""
 
 
-def get_current_state(chat_id: int) -> dict:
+def get_user_state(chat_id: int) -> CurrentUserState:
     """
-    Возвращаемое значение: словарь с текущими состояниями сообщений.
-    Если пользователь отправляет сообщение впервые, то создается словарь с пустыми значениями.
+    Если это новый пользователь, то создается новый экземпляр класса с
+    пустыми полями. В противном случае берется существующий из словаря.
     Ключ словаря: chat_id - чат с определенным пользователем.
-    Значение словаря: словарь с ключами selected_topic и expected_text.
-    selected_topic - выбранный пользователем топик для отправки в mqtt.
-    expected_text - введенный пользователем текст сообщения для отправки.
+    Возвращаемое значение: экземпляр класса.
     """
 
     chat_id_str = str(chat_id)
 
-    if current_states.get(chat_id_str) is None:
-        current_states[chat_id_str] = {"selected_topic": "",
-                                       "expected_text": "",
-                                       "user": "",
-                                       "password": ""}
+    if clients_state.get(chat_id_str) is None:
+        clients_state[chat_id_str] = CurrentUserState()
 
-    return current_states[chat_id_str]
+    return clients_state[chat_id_str]
 
 
 def create_common_buttons(chat_id: int) -> types.ReplyKeyboardMarkup:
@@ -64,8 +92,8 @@ def create_common_buttons(chat_id: int) -> types.ReplyKeyboardMarkup:
 
     keyboard = types.ReplyKeyboardMarkup(resize_keyboard=True)
 
-    cur_state = get_current_state(chat_id)
-    if cur_state["user"]:
+    cur_state = get_user_state(chat_id)
+    if cur_state.user:
         keyboard.add(types.KeyboardButton("create_message"))
 
     keyboard.add(types.KeyboardButton("sign_in"))
@@ -109,9 +137,8 @@ def display_selection_buttons(chat_id: int) -> None:
     bot.send_message(chat_id, "Выберите топик или введите информацию вручную",
                      reply_markup=create_topic_buttons())
 
-    cur_state = get_current_state(chat_id)
-    cur_state["selected_topic"] = ""
-    cur_state["expected_text"] = ""
+    cur_state = get_user_state(chat_id)
+    cur_state.reset_messages()
 
 
 @bot.callback_query_handler(func=lambda call: True)
@@ -123,17 +150,17 @@ def callback_query(call) -> None:
 
     bot.delete_message(call.from_user.id, call.message.id)
 
-    cur_state = get_current_state(call.from_user.id)
+    cur_state = get_user_state(call.from_user.id)
     if call.data == "manual":
         # Выбран ручной режим ввода.
         # Пользователь должен будет ввести топик, а затем само сообщение.
-        cur_state["expected_text"] = "topic"
+        cur_state.set_state("expected_text", "topic")
         bot.send_message(call.from_user.id, "Введите топик для отправки сообщения")
     else:
         # Топик выбран из предложенного списка.
         # Пользователь должен будет ввести сообщение для отправки.
-        cur_state["expected_text"] = "message"
-        cur_state["selected_topic"] = call.data
+        cur_state.set_state("expected_text", "message")
+        cur_state.set_state("selected_topic", call.data)
         bot.send_message(call.from_user.id, "Введите сообщение для отправки")
 
 
@@ -227,41 +254,39 @@ def message_processing(message: str, id_message: int, chat_id: int) -> dict:
     """
 
     current_message = {}
-    cur_state = get_current_state(chat_id)
-    if cur_state["expected_text"] == "topic":
+    cur_state = get_user_state(chat_id)
+    if cur_state.expected_text == "topic":
         # Пользователь ввел топик. Предложим ввести само сообщение.
-        cur_state["selected_topic"] = message
+        cur_state.set_state("selected_topic", message)
+        cur_state.set_state("expected_text", "message")
         bot.send_message(id_message, "Введите сообщение для отправки")
-        cur_state["expected_text"] = "message"
 
-    elif cur_state["expected_text"] == "message":
+    elif cur_state.expected_text == "message":
         # Пользователь ввел сообщение. Вернем словарь с введенными пользователем полями.
-        current_message = {"topic": cur_state["selected_topic"],
+        current_message = {"topic": cur_state.selected_topic,
                            "message": message,
-                           "user": cur_state["user"],
-                           "password": encode_password(cur_state["password"],
-                                                       cur_state["salt"])}
+                           "user": cur_state.user,
+                           "password": encode_password(cur_state.password,
+                                                       cur_state.salt)}
 
-        cur_state["expected_text"] = ""
-        cur_state["selected_topic"] = ""
+        cur_state.reset_messages()
 
-    elif cur_state["expected_text"] == "user":
+    elif cur_state.expected_text == "user":
         # Пользователь ввел логин. Предложим ввести пароль.
-        cur_state["user"] = message
+        cur_state.set_state("user", message)
+        cur_state.set_state("expected_text", "password")
         bot.send_message(id_message, "Введите пароль для подключения к mqtt_publisher")
-        cur_state["expected_text"] = "password"
 
-    elif cur_state["expected_text"] == "password":
+    elif cur_state.expected_text == "password":
         # Пользователь ввел пароль. Проверим корректность введенных данных и завершим авторизацию.
-        cur_state["password"] = message
-
-        answer_for_client, salt = check_user_password(cur_state["user"], cur_state["password"])
-        cur_state["salt"] = salt
+        cur_state.set_state("password", message)
+        answer_for_client, salt = check_user_password(cur_state.user, cur_state.password)
+        cur_state.set_state("salt", salt)
 
         bot.send_message(id_message,
                          answer_for_client,
                          reply_markup=create_common_buttons(chat_id))
-        cur_state["expected_text"] = ""
+        cur_state.set_state("expected_text", "")
 
     return current_message
 
@@ -274,8 +299,8 @@ def create_message_handling(chat_id: int, user_id: int) -> None:
     """
 
     # Проверить необходимость ввода логина и пароля.
-    cur_state = get_current_state(chat_id)
-    if cur_state["user"]:
+    cur_state = get_user_state(chat_id)
+    if cur_state.user:
         # Вывод кнопок для быстрого ввода топика для отправки.
         display_selection_buttons(chat_id)
     else:
@@ -290,13 +315,12 @@ def sign_in_handling(chat_id: int, user_id: int) -> None:
     Пользователю отправляется запрос на ввод учетных данных.
     """
 
-    cur_state = get_current_state(chat_id)
-    cur_state["user"] = ""
-    cur_state["password"] = ""
+    cur_state = get_user_state(chat_id)
+    cur_state.reset_user_auth()
+    cur_state.set_state("expected_text", "user")
 
     message_answer = "Введите логин для подключения к mqtt_publisher"
     bot.send_message(user_id, message_answer)
-    cur_state["expected_text"] = "user"
 
 
 @bot.message_handler(content_types=['text'])
@@ -339,7 +363,7 @@ def get_message(message: telebot.types.Message) -> None:
 if __name__ == "__main__":
 
     if not get_settings("correctly"):
-        SystemExit("Ошибка при загрузке настроек. Работа программы завершена")
+        raise SystemExit("Ошибка при загрузке настроек. Работа программы завершена")
 
     print(f"Сервис запущен. Подключен бот {get_settings('name')}")
 
