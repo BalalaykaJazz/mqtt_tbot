@@ -15,6 +15,7 @@ from config import get_settings, load_settings, SettingsError  # type: ignore
 MESSAGE_STATUS_SUCCESSFUL = "OK"
 MESSAGE_AUTH_SUCCESSFUL = "Авторизация завершена"
 MESSAGE_AUTH_DENIED = "Неверные имя пользователя или пароль"
+MESSAGE_CONNECTION_LOST = "Потеряно соединение с сервисом mqtt publisher"
 SOCKET_TIMEOUT = 10
 
 
@@ -200,22 +201,31 @@ def send_message(message: str) -> str:
     return "Неизвестная ошибка отправки сообщения"
 
 
-def check_user_password(user: str, password: str) -> str:
+def check_user_password(user: str, password: str) -> tuple:
     """
-    Проверка корректности введенного пользователя и пароля.
+    Функция получает соль от сервиса и отправляет ему логин/пароль на проверку.
 
-    Возвращаемое значение: строка с результатом отправки сообщения.
+    Возвращаемое значение: кортеж с результатом отправки сообщения и солью.
     """
 
-    test_message = {"user": user,
-                    "password": encode_password(password,
-                                                get_settings(_settings, "salt")),
-                    "topic": "",
-                    "message": "/check_auth"}
+    get_salt_message = {"action": "/get_salt",
+                        "user": user}
+    try:
+        received_salt = send_message(json.dumps(get_salt_message))
+    except ConnectionRefusedError:
+        return MESSAGE_CONNECTION_LOST, ""
 
-    state = send_message(json.dumps(test_message))
+    check_auth_message = {"user": user,
+                          "password": encode_password(password, received_salt),
+                          "action": "/check_auth"}
+    try:
+        state = send_message(json.dumps(check_auth_message))
+    except ConnectionRefusedError:
+        return MESSAGE_CONNECTION_LOST, ""
 
-    return MESSAGE_AUTH_SUCCESSFUL if state == MESSAGE_STATUS_SUCCESSFUL else MESSAGE_AUTH_DENIED
+    answer_for_client = MESSAGE_AUTH_SUCCESSFUL if state == MESSAGE_STATUS_SUCCESSFUL else MESSAGE_AUTH_DENIED
+
+    return answer_for_client, received_salt
 
 
 def message_processing(message: str, id_message: int, chat_id: int) -> dict:
@@ -241,7 +251,7 @@ def message_processing(message: str, id_message: int, chat_id: int) -> dict:
                            "message": message,
                            "user": cur_state["user"],
                            "password": encode_password(cur_state["password"],
-                                                       get_settings(_settings, "salt"))}
+                                                       cur_state["salt"])}
 
         cur_state["expected_text"] = ""
         cur_state["selected_topic"] = ""
@@ -256,8 +266,11 @@ def message_processing(message: str, id_message: int, chat_id: int) -> dict:
         # Пользователь ввел пароль. Проверим корректность введенных данных и завершим авторизацию.
         cur_state["password"] = message
 
+        answer_for_client, salt = check_user_password(cur_state["user"], cur_state["password"])
+        cur_state["salt"] = salt
+
         bot.send_message(id_message,
-                         check_user_password(cur_state["user"], cur_state["password"]),
+                         answer_for_client,
                          reply_markup=create_common_buttons(chat_id))
         cur_state["expected_text"] = ""
 
