@@ -38,7 +38,6 @@ class CurrentUserState:
     selected_topic - выбранный пользователем топик для отправки в mqtt.
     expected_text - введенный пользователем текст сообщения для отправки.
     user и password - логин и пароль текущего пользователя.
-    salt - соль для хеширования пароля пользователя.
     """
 
     def __init__(self):
@@ -46,7 +45,6 @@ class CurrentUserState:
         self.expected_text = ""
         self.user = ""
         self.password = ""
-        self.salt = ""
 
     def set_state(self, state_name: str, value: str):
         """Записывается новое состояние."""
@@ -61,7 +59,6 @@ class CurrentUserState:
         """Сброс логина и пароля"""
         self.user = ""
         self.password = ""
-        self.salt = ""
 
 
 class FormatError(Exception):
@@ -221,7 +218,7 @@ def check_user_password(user: str, password: str) -> tuple:
     """
     Функция получает соль от сервиса и отправляет ему логин/пароль на проверку.
 
-    Возвращаемое значение: кортеж с результатом отправки сообщения и солью.
+    Возвращаемое значение: кортеж с результатом отправки сообщения и хешем пароля.
     """
 
     get_salt_message = {"action": "/get_salt",
@@ -241,7 +238,7 @@ def check_user_password(user: str, password: str) -> tuple:
 
     answer_for_client = MESSAGE_AUTH_SUCCESSFUL if state == MESSAGE_STATUS_SUCCESSFUL else MESSAGE_AUTH_DENIED
 
-    return answer_for_client, received_salt
+    return answer_for_client, check_auth_message.get("password")
 
 
 def message_processing(message: str, id_message: int, chat_id: int) -> dict:
@@ -266,8 +263,7 @@ def message_processing(message: str, id_message: int, chat_id: int) -> dict:
         current_message = {"topic": cur_state.selected_topic,
                            "message": message,
                            "user": cur_state.user,
-                           "password": encode_password(cur_state.password,
-                                                       cur_state.salt)}
+                           "password": cur_state.password}
 
         cur_state.reset_messages()
 
@@ -279,9 +275,8 @@ def message_processing(message: str, id_message: int, chat_id: int) -> dict:
 
     elif cur_state.expected_text == "password":
         # Пользователь ввел пароль. Проверим корректность введенных данных и завершим авторизацию.
-        cur_state.set_state("password", message)
-        answer_for_client, salt = check_user_password(cur_state.user, cur_state.password)
-        cur_state.set_state("salt", salt)
+        answer_for_client, hash_password = check_user_password(cur_state.user, message)
+        cur_state.set_state("password", hash_password)
 
         bot.send_message(id_message,
                          answer_for_client,
