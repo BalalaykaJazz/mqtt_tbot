@@ -7,10 +7,10 @@ import json
 import ssl
 import socket
 import telebot  # type: ignore
-from pod_mqtt_tbot.user_auth import encode_password  # type: ignore
+from user_auth import encode_password  # type: ignore
 from telebot import types  # type: ignore
 from requests.exceptions import ReadTimeout  # type: ignore
-from pod_mqtt_tbot.config import get_settings  # type: ignore
+from config import get_settings  # type: ignore
 
 MESSAGE_STATUS_SUCCESSFUL = "OK"
 MESSAGE_AUTH_SUCCESSFUL = "Авторизация завершена"
