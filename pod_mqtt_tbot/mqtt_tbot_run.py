@@ -6,29 +6,51 @@
 import json
 import ssl
 import socket
+import re
 import telebot  # type: ignore
 from user_auth import encode_password  # type: ignore
 from telebot import types  # type: ignore
 from requests.exceptions import ReadTimeout  # type: ignore
 from config import get_settings  # type: ignore
+import requests
+
+# Является ли сообщение пользователя командой
+IS_CMD = re.compile(r"/\w+")
+IS_CMD_SET = re.compile(r"/set\s+")
+IS_CMD_SHOW = re.compile(r"/show\s+")
+IS_CMD_SEND = re.compile(r"/send\s+")
+IS_CMD_SIGN_IN = re.compile(r"/sign_in")
+IS_CMD_CREATE_MSG = re.compile(r"/create_message")
+
+# Найти параметры команды
+CMD_SET_USR = re.compile(r"user\s+\w+")
+CMD_SET_PWRD = re.compile(r"password\s+\w+")
+CMD_SET_DEVICE = re.compile(r"device\s+\w+")
+CMD_SET_TOPIC = re.compile(r"topic\s+.+")
+
+CMD_SHOW_DEVICES = re.compile(r"devices")
 
 MESSAGE_STATUS_SUCCESSFUL = "OK"
 MESSAGE_AUTH_SUCCESSFUL = "Авторизация завершена"
 MESSAGE_AUTH_DENIED = "Неверные имя пользователя или пароль"
 MESSAGE_CONNECTION_LOST = "Потеряно соединение с сервисом mqtt publisher"
 SOCKET_TIMEOUT = 10
-WELCOME_MESSAGE = "Сначала нужно авторизироваться через кнопку sign in. \n" \
-                  "Для начала ввода сообщения воспользуйтесь кнопкой create_message. \n"
-
-
-def start_bot() -> telebot:
-    """Создание телеграм бота"""
-
-    return telebot.TeleBot(get_settings("tg_token"))
-
+WELCOME_MESSAGE = "Доступные команды: \n" \
+                  "/create_message - помощник ввода сообщений. \n" \
+                  "/sign_in - помощник авторизации пользователя. \n" \
+                  "/set user *** - пользователь для авторизации, " \
+                  "который должен быть заранее заведен в mqtt_publisher \n" \
+                  "/set password *** - пароль для авторизации." \
+                  "Перед вводом пароля должен быть указан пользователь." \
+                  "После ввода пароля выполняется авторизация в mqtt_publisher \n" \
+                  "/set user *** password *** - пользователь и пароль в одной команде \n" \
+                  "/set topic *** - топик для отправки данных. \n" \
+                  "/set device *** - текущее устройство. Если топик был заполнен ранее," \
+                  "то устройство в нем изменяется на новое. \n" \
+                  "/send *** - отправить сообщение в mqtt_publisher. \n "
 
 clients_state: dict = {}
-bot = start_bot()
+bot = telebot.TeleBot(get_settings("tg_token"))
 
 
 class CurrentUserState:
@@ -45,10 +67,23 @@ class CurrentUserState:
         self.expected_text = ""
         self.user = ""
         self.password = ""
+        self.device = ""
 
     def set_state(self, state_name: str, value: str):
         """Записывается новое состояние."""
         setattr(self, state_name, value)
+
+    def set_device_from_topic(self):
+        """Получение устройства из топика."""
+        new_topic = self.selected_topic.split(sep="/")
+        self.set_state("device", new_topic[2])
+
+    def update_topic(self):
+        """Обновить топик из-за изменения устройства."""
+        old_topic = self.selected_topic.split(sep="/")
+        old_topic[2] = self.device
+        new_topic = "/".join(old_topic)
+        self.set_state("selected_topic", new_topic)
 
     def reset_messages(self):
         """Сбросить состояния для ввода новых сообщений"""
@@ -91,10 +126,11 @@ def create_common_buttons(chat_id: int) -> types.ReplyKeyboardMarkup:
 
     cur_state = get_user_state(chat_id)
     if cur_state.user:
-        keyboard.add(types.KeyboardButton("create_message"))
+        keyboard.add(types.KeyboardButton("/create_message"))
 
-    keyboard.add(types.KeyboardButton("sign_in"))
+    keyboard.add(types.KeyboardButton("/sign_in"))
     keyboard.add(types.KeyboardButton("/help"))
+
     return keyboard
 
 
@@ -152,39 +188,31 @@ def callback_query(call) -> None:
         # Выбран ручной режим ввода.
         # Пользователь должен будет ввести топик, а затем само сообщение.
         cur_state.set_state("expected_text", "topic")
-        bot.send_message(call.from_user.id, "Введите топик для отправки сообщения")
+        send_response_to_user(call.from_user.id, "Введите топик для отправки сообщения")
     else:
         # Топик выбран из предложенного списка.
         # Пользователь должен будет ввести сообщение для отправки.
         cur_state.set_state("expected_text", "message")
         cur_state.set_state("selected_topic", call.data)
-        bot.send_message(call.from_user.id, "Введите сообщение для отправки")
+        cur_state.set_device_from_topic()
+        send_response_to_user(call.from_user.id, "Введите сообщение для отправки")
 
 
 def is_message_correct(message: dict) -> bool:
     """
     Возвращается признак корректности введенного сообщения.
-    Если есть ошибки, то вызывается исключение.
     """
 
-    try:
-        required_fields = ("topic", "message", "user", "password")
-        for field in required_fields:
-            if field not in message:
-                print(f"Сообщение не содержит обязательного поля {field}")
-                raise FormatError
-
-    except AttributeError as err:
-        raise FormatError from err
-    except json.decoder.JSONDecodeError as err:
-        raise FormatError from err
-    except TypeError as err:
-        raise FormatError from err
+    required_fields = ("topic", "message", "user", "password")
+    for field in required_fields:
+        if field not in message:
+            print(f"Сообщение не содержит обязательного поля {field}")
+            return False
 
     return True
 
 
-def send_message(message: str) -> str:
+def deliver_message(message: str) -> str:
     """
     Введенное пользователем сообщение отправляется в сокет - для сервиса MQTT publisher.
     Возвращаемое значение: признак успеха отправки.
@@ -224,21 +252,30 @@ def check_user_password(user: str, password: str) -> tuple:
     get_salt_message = {"action": "/get_salt",
                         "user": user}
     try:
-        received_salt = send_message(json.dumps(get_salt_message))
+        received_salt = deliver_message(json.dumps(get_salt_message))
     except ConnectionRefusedError:
         return MESSAGE_CONNECTION_LOST, ""
 
-    check_auth_message = {"user": user,
-                          "password": encode_password(password, received_salt),
-                          "action": "/check_auth"}
+    check_auth_message = {"action": "/check_auth",
+                          "user": user,
+                          "password": encode_password(password, received_salt)}
     try:
-        state = send_message(json.dumps(check_auth_message))
+        state = deliver_message(json.dumps(check_auth_message))
     except ConnectionRefusedError:
         return MESSAGE_CONNECTION_LOST, ""
 
     answer_for_client = MESSAGE_AUTH_SUCCESSFUL if state == MESSAGE_STATUS_SUCCESSFUL else MESSAGE_AUTH_DENIED
 
     return answer_for_client, check_auth_message.get("password")
+
+
+def prepare_message(message: str, cur_state: CurrentUserState) -> dict:
+    """Возвращает сообщение пользователя в требуемом формате"""
+
+    return {"topic": cur_state.selected_topic,
+            "message": message,
+            "user": cur_state.user,
+            "password": cur_state.password}
 
 
 def message_processing(message: str, id_message: int, chat_id: int) -> dict:
@@ -256,22 +293,18 @@ def message_processing(message: str, id_message: int, chat_id: int) -> dict:
         # Пользователь ввел топик. Предложим ввести само сообщение.
         cur_state.set_state("selected_topic", message)
         cur_state.set_state("expected_text", "message")
-        bot.send_message(id_message, "Введите сообщение для отправки")
+        send_response_to_user(id_message, "Введите сообщение для отправки")
 
     elif cur_state.expected_text == "message":
         # Пользователь ввел сообщение. Вернем словарь с введенными пользователем полями.
-        current_message = {"topic": cur_state.selected_topic,
-                           "message": message,
-                           "user": cur_state.user,
-                           "password": cur_state.password}
-
+        current_message = prepare_message(message, cur_state)
         cur_state.reset_messages()
 
     elif cur_state.expected_text == "user":
         # Пользователь ввел логин. Предложим ввести пароль.
         cur_state.set_state("user", message)
         cur_state.set_state("expected_text", "password")
-        bot.send_message(id_message, "Введите пароль для подключения к mqtt_publisher")
+        send_response_to_user(id_message, "Введите пароль для подключения к mqtt_publisher")
 
     elif cur_state.expected_text == "password":
         # Пользователь ввел пароль. Проверим корректность введенных данных и завершим авторизацию.
@@ -286,9 +319,15 @@ def message_processing(message: str, id_message: int, chat_id: int) -> dict:
     return current_message
 
 
-def create_message_handling(chat_id: int, user_id: int) -> None:
+def send_response_to_user(chat_id: int, message: str):
+    """Отправляет в чат телеграмма сообщение для пользователя"""
+
+    bot.send_message(chat_id, message)
+
+
+def run_action_create_message(chat_id: int, user_id: int) -> None:
     """
-    Обработка команды создания сообщения.
+    Обработка команды создания сообщения (/create_message).
     Если логин и пароль не были предварительно введены пользователем,
     то обработка команды не выполняется.
     """
@@ -299,13 +338,12 @@ def create_message_handling(chat_id: int, user_id: int) -> None:
         # Вывод кнопок для быстрого ввода топика для отправки.
         display_selection_buttons(chat_id)
     else:
-        message_answer = "Перед вводом сообщения нужно пройти авторизацию"
-        bot.send_message(user_id, message_answer)
+        send_response_to_user(user_id, "Перед вводом сообщения нужно пройти авторизацию")
 
 
-def sign_in_handling(chat_id: int, user_id: int) -> None:
+def run_action_sign_in(chat_id: int, user_id: int) -> None:
     """
-    Обработка команды sign in.
+    Обработка команды авторизации (/sign_in).
     Производится очистка текущих значений user/password.
     Пользователю отправляется запрос на ввод учетных данных.
     """
@@ -314,8 +352,112 @@ def sign_in_handling(chat_id: int, user_id: int) -> None:
     cur_state.reset_user_auth()
     cur_state.set_state("expected_text", "user")
 
-    message_answer = "Введите логин для подключения к mqtt_publisher"
-    bot.send_message(user_id, message_answer)
+    send_response_to_user(user_id, "Введите логин для подключения к mqtt_publisher")
+
+
+def parse_message(command: re.Pattern, message: str, start_position: int) -> str:
+    """
+    Поиск выполняется c использованием шаблона регулярного выражения.
+    Служебное поле (такое как user, password итд) отбрасывается,
+    а следующее за ним поле, начинающееся со start_position, возвращается.
+    """
+
+    find = command.search(message)
+    if find:
+        result = find.group(0)[start_position:].strip()
+    else:
+        result = ""
+
+    return result
+
+
+def run_action_set(message: str, chat_id: int):
+    """
+    Обработка команды установки параметров (/set).
+    Описание команд приведено в WELCOME_MESSAGE.
+    """
+
+    user = parse_message(CMD_SET_USR, message, 4)
+    password = parse_message(CMD_SET_PWRD, message, 8)
+    cur_state = get_user_state(chat_id)
+    answer_for_client = "OK"
+
+    if user:
+        cur_state.reset_user_auth()
+        cur_state.set_state("user", user)
+
+    if password and cur_state.user:
+        answer_for_client, hash_password = check_user_password(cur_state.user, password)
+        cur_state.set_state("password", hash_password)
+    elif password and not cur_state.user:
+        answer_for_client = "Перед вводом пароля требуется указать пользователя"
+
+    device = parse_message(CMD_SET_DEVICE, message, 6)
+    if device:
+        cur_state.set_state("device", device)
+
+        if cur_state.selected_topic:
+            cur_state.update_topic()
+            answer_for_client = f"Новый топик: {cur_state.selected_topic}"
+
+    topic = parse_message(CMD_SET_TOPIC, message, 5)
+    if topic:
+        cur_state.set_state("selected_topic", topic)
+        cur_state.set_device_from_topic()
+        answer_for_client = f"Новый топик: {topic}"
+
+    send_response_to_user(chat_id, answer_for_client)
+
+
+def run_action_show(message: str, chat_id: int):
+    """
+    Обработка команды /show.
+    """
+
+    cur_state = get_user_state(chat_id)
+
+    text = re.sub(IS_CMD_SHOW, "", message).strip().lower()
+
+    if text == "topic":
+        value = cur_state.selected_topic
+    elif text == "device":
+        value = cur_state.device
+    elif text == "user":
+        value = cur_state.user
+
+    send_response_to_user(chat_id, value)
+
+
+def run_action_send(message: str, chat_id: int, user_id: int):
+    """
+    Обработка команды /send.
+    """
+
+    text = re.sub(IS_CMD_SEND, "", message).strip()
+    cur_state = get_user_state(chat_id)
+    current_message = prepare_message(text, cur_state)
+    result = deliver_message(json.dumps(current_message))
+    send_response_to_user(user_id, result)
+
+
+def run_command(text_message: str, chat_id: int, user_id: int):
+    """
+    Выполнение команд введенных пользователем. Командой считается
+    сообщение начинающееся с символа /.
+    """
+
+    if IS_CMD_SET.match(text_message):
+        run_action_set(text_message, chat_id)
+    elif IS_CMD_SHOW.match(text_message):
+        run_action_show(text_message, chat_id)
+    elif IS_CMD_SEND.match(text_message):
+        run_action_send(text_message, chat_id, user_id)
+    elif IS_CMD_CREATE_MSG.match(text_message):
+        run_action_create_message(chat_id, user_id)
+    elif IS_CMD_SIGN_IN.match(text_message):
+        run_action_sign_in(chat_id, user_id)
+    else:
+        send_response_to_user(chat_id, "Неизвестная команда")
 
 
 @bot.message_handler(content_types=['text'])
@@ -326,33 +468,40 @@ def get_message(message: telebot.types.Message) -> None:
     на наличие всех необходимых полей и отправляется в сокет.
     """
 
-    if message.text == "create_message":
-        create_message_handling(message.chat.id, message.from_user.id)
+    text_message = message.text.lower()
 
-    elif message.text == "sign_in":
-        sign_in_handling(message.chat.id, message.from_user.id)
-
+    if IS_CMD.match(text_message):
+        run_command(text_message, message.chat.id, message.from_user.id)
     else:
+
         # Обработка ввода сообщения пользователем.
-        current_message = message_processing(message.text, message.from_user.id, message.chat.id)
+        current_message = message_processing(text_message, message.from_user.id, message.chat.id)
 
         if current_message:
             # Пользователь ввел сообщение полностью.
             try:
                 if is_message_correct(current_message):
                     # Сообщение преобразовывается в строку и отправляется.
-                    result = send_message(json.dumps(current_message))
-                    message_answer = f"Ответ сервиса: {result}"
+                    result = deliver_message(json.dumps(current_message))
+                    cur_state = get_user_state(message.chat.id)
+                    sender_name = cur_state.device if cur_state.device else "Server"
+                    message_answer = f"{sender_name}: {result}"
                 else:
-                    message_answer = ""
+                    message_answer = "Полученное сообщение не соответствует требуемому формату"
 
-            except FormatError:
-                message_answer = "Полученное сообщение не соответствует требуемому формату"
             except ConnectionRefusedError:
                 message_answer = "Сервис 'MQTT publisher' не запущен"
 
-            bot.send_message(message.from_user.id, message_answer)
-            print(message_answer)
+            send_response_to_user(message.from_user.id, message_answer)
+
+
+def start_pooling():
+    """Бесконечный цикл работы с ботом"""
+
+    try:
+        bot.polling(none_stop=True)
+    except (ReadTimeout, requests.exceptions.ConnectTimeout):
+        start_pooling()
 
 
 if __name__ == "__main__":
@@ -361,8 +510,4 @@ if __name__ == "__main__":
         raise SystemExit("Ошибка при загрузке настроек. Работа программы завершена")
 
     print(f"Сервис запущен. Подключен бот {get_settings('name')}")
-
-    try:
-        bot.polling(none_stop=True)
-    except ReadTimeout:
-        raise SystemExit("Read timed out")
+    start_pooling()
