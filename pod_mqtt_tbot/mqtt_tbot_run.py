@@ -131,18 +131,6 @@ def create_common_buttons(chat_id: int) -> types.ReplyKeyboardMarkup:
     return keyboard
 
 
-@bot.message_handler(commands=['start', 'help'])
-def send_welcome(message: telebot.types.Message) -> None:
-    """
-    Выводится стартовая информация с подсказками пользователю,
-    а так же основные кнопки управления.
-    """
-
-    bot.send_message(message.from_user.id,
-                     WELCOME_MESSAGE,
-                     reply_markup=create_common_buttons(message.from_user.id))
-
-
 def create_topic_buttons() -> types.InlineKeyboardMarkup:
     """
     Создаются кнопки для быстрого ввода доступных топиков mqtt.
@@ -158,7 +146,19 @@ def create_topic_buttons() -> types.InlineKeyboardMarkup:
     return keyboard
 
 
-def display_selection_buttons(chat_id: int) -> None:
+@bot.message_handler(commands=['start', 'help'])
+def send_welcome(message: telebot.types.Message):
+    """
+    Выводится стартовая информация с подсказками пользователю,
+    а так же основные кнопки управления.
+    """
+
+    bot.send_message(message.from_user.id,
+                     WELCOME_MESSAGE,
+                     reply_markup=create_common_buttons(message.from_user.id))
+
+
+def display_selection_buttons(chat_id: int):
     """
     Отправляется сообщение от бота с предложенными топиками для отправки в mqtt.
     Manual - ручной ввод топика и сообщения.
@@ -185,28 +185,17 @@ def callback_query(call) -> None:
         # Выбран ручной режим ввода.
         # Пользователь должен будет ввести топик, а затем само сообщение.
         cur_state.set_state("expected_text", "topic")
-        send_response_to_user(call.from_user.id, "Введите топик для отправки сообщения")
+        answer_for_client = "Введите топик для отправки сообщения"
     else:
         # Топик выбран из предложенного списка.
         # Пользователь должен будет ввести сообщение для отправки.
         cur_state.set_state("expected_text", "message")
         cur_state.set_state("selected_topic", call.data)
         cur_state.set_device_from_topic()
-        send_response_to_user(call.from_user.id, "Введите сообщение для отправки")
 
+        answer_for_client = "Введите сообщение для отправки"
 
-def is_message_correct(message: dict) -> bool:
-    """
-    Возвращается признак корректности введенного сообщения.
-    """
-
-    required_fields = ("topic", "message", "user", "password")
-    for field in required_fields:
-        if field not in message:
-            print(f"Сообщение не содержит обязательного поля {field}")
-            return False
-
-    return True
+    send_response_to_user(call.from_user.id, answer_for_client)
 
 
 def deliver_message(message: str) -> str:
@@ -240,33 +229,6 @@ def deliver_message(message: str) -> str:
     return "Неизвестная ошибка отправки сообщения"
 
 
-def check_user_password(user: str, password: str) -> tuple:
-    """
-    Функция получает соль от сервиса и отправляет ему логин/пароль на проверку.
-
-    Возвращаемое значение: кортеж с результатом отправки сообщения и хешем пароля.
-    """
-
-    get_salt_message = {"action": "/get_salt",
-                        "user": user}
-    try:
-        received_salt = deliver_message(json.dumps(get_salt_message))
-    except ConnectionRefusedError:
-        return MESSAGE_CONNECTION_LOST, ""
-
-    check_auth_message = {"action": "/check_auth",
-                          "user": user,
-                          "password": encode_password(password, received_salt)}
-    try:
-        state = deliver_message(json.dumps(check_auth_message))
-    except ConnectionRefusedError:
-        return MESSAGE_CONNECTION_LOST, ""
-
-    answer_for_client = SUCCESSFUL_MESSAGE if state == SUCCESSFUL_MESSAGE else FAILED_MESSAGE
-
-    return answer_for_client, check_auth_message.get("password")
-
-
 def make_message(message: str, cur_state: CurrentUserState) -> dict:
     """Возвращает сообщение пользователя в требуемом формате"""
 
@@ -274,6 +236,20 @@ def make_message(message: str, cur_state: CurrentUserState) -> dict:
             "message": message,
             "user": cur_state.user,
             "password": cur_state.password}
+
+
+def is_message_correct(message: dict) -> bool:
+    """
+    Возвращается признак корректности введенного сообщения.
+    """
+
+    required_fields = ("topic", "message", "user", "password")
+    for field in required_fields:
+        if field not in message:
+            print(f"Сообщение не содержит обязательного поля {field}")
+            return False
+
+    return True
 
 
 def message_processing(message: str, id_message: int, chat_id: int) -> dict:
@@ -306,8 +282,11 @@ def message_processing(message: str, id_message: int, chat_id: int) -> dict:
 
     elif cur_state.expected_text == "password":
         # Пользователь ввел пароль. Проверим корректность введенных данных и завершим авторизацию.
-        answer_for_client, hash_password = check_user_password(cur_state.user, message)
+
+        hash_password, answer_for_client = make_password_hash(cur_state.user, message)
         cur_state.set_state("password", hash_password)
+        answer_for_client = check_auth(cur_state.user, cur_state.password)
+        cur_state.update_topic()
 
         bot.send_message(id_message,
                          answer_for_client,
