@@ -17,37 +17,34 @@ import requests
 # Является ли сообщение пользователя командой
 IS_CMD = re.compile(r"/\w+")
 IS_CMD_SET = re.compile(r"/set\s+")
-IS_CMD_SHOW = re.compile(r"/show\s+")
+IS_CMD_SHOW = re.compile(r"/sh\s+")
 IS_CMD_SEND = re.compile(r"/send\s+")
-IS_CMD_SIGN_IN = re.compile(r"/sign_in")
 IS_CMD_CREATE_MSG = re.compile(r"/create_message")
 
-# Найти параметры команды
-CMD_SET_USR = re.compile(r"user\s+\w+")
-CMD_SET_PWRD = re.compile(r"password\s+\w+")
-CMD_SET_DEVICE = re.compile(r"device\s+\w+")
-CMD_SET_TOPIC = re.compile(r"topic\s+.+")
+IS_CMD_AUTH = re.compile(r"/auth\s+")
+CMD_AUTH_USER = re.compile(r"/auth (\w+)\s*:\s*\w+")
+CMD_AUTH_PASSWORD = re.compile(r"/auth \w+\s*:\s*(\w+)")
+CMD_SET_DEVICE = re.compile(r"dev\s+(\w+)")
 
-CMD_SHOW_DEVICES = re.compile(r"devices")
-
-MESSAGE_STATUS_SUCCESSFUL = "OK"
-MESSAGE_AUTH_SUCCESSFUL = "Авторизация завершена"
-MESSAGE_AUTH_DENIED = "Неверные имя пользователя или пароль"
+SUCCESSFUL_MESSAGE = "OK"
+FAILED_MESSAGE = "Failed"
+UNKNOWN_COMMAND = "Неизвестная команда"
 MESSAGE_CONNECTION_LOST = "Потеряно соединение с сервисом mqtt publisher"
-SOCKET_TIMEOUT = 10
-WELCOME_MESSAGE = "Доступные команды: \n" \
-                  "/create_message - помощник ввода сообщений. \n" \
-                  "/sign_in - помощник авторизации пользователя. \n" \
-                  "/set user *** - пользователь для авторизации, " \
-                  "который должен быть заранее заведен в mqtt_publisher \n" \
-                  "/set password *** - пароль для авторизации." \
-                  "Перед вводом пароля должен быть указан пользователь." \
-                  "После ввода пароля выполняется авторизация в mqtt_publisher \n" \
-                  "/set user *** password *** - пользователь и пароль в одной команде \n" \
-                  "/set topic *** - топик для отправки данных. \n" \
-                  "/set device *** - текущее устройство. Если топик был заполнен ранее," \
-                  "то устройство в нем изменяется на новое. \n" \
-                  "/send *** - отправить сообщение в mqtt_publisher. \n "
+AUTH_FORMAT_ERROR = "Некорректный формат команды /auth\n" \
+                    "Требуемый формат: /auth user:password"
+SOCKET_TIMEOUT = 30
+WELCOME_MESSAGE = "Доступные команды:\n" \
+                  "/create_message - помощник ввода сообщений.\n" \
+                  "/sign_in - помощник авторизации пользователя.\n" \
+                  "/set auth user:password - имя пользователя и пароль," \
+                  "доступные для подключения к mqtt_publisher.\n" \
+                  "После ввода команды происходит проверка введенных данных" \
+                  "на валидность.\n" \
+                  "/set dev *** - устройство для отправки сообщений.\n" \
+                  "/send *** - отправить сообщение в mqtt_publisher." \
+                  "топик сообщения формируется автоматически в формате:\n" \
+                  "/<user>/<device>/in/params\n" \
+                  "/sh auth, /sh dev, /sh topic - проверка введенных данных."
 
 clients_state: dict = {}
 bot = telebot.TeleBot(get_settings("tg_token"))
@@ -80,10 +77,10 @@ class CurrentUserState:
 
     def update_topic(self):
         """Обновить топик из-за изменения устройства."""
-        old_topic = self.selected_topic.split(sep="/")
-        old_topic[2] = self.device
-        new_topic = "/".join(old_topic)
-        self.set_state("selected_topic", new_topic)
+
+        if self.user and self.device:
+            new_topic = f"/{self.user}/{self.device}/in/params"
+            self.set_state("selected_topic", new_topic)
 
     def reset_messages(self):
         """Сбросить состояния для ввода новых сообщений"""
@@ -236,6 +233,7 @@ def deliver_message(message: str) -> str:
             return answer
 
     except socket.timeout:
+        server_socket.close()
         return "Превышено время ожидания ответа"
 
     server_socket.close()
@@ -264,12 +262,12 @@ def check_user_password(user: str, password: str) -> tuple:
     except ConnectionRefusedError:
         return MESSAGE_CONNECTION_LOST, ""
 
-    answer_for_client = MESSAGE_AUTH_SUCCESSFUL if state == MESSAGE_STATUS_SUCCESSFUL else MESSAGE_AUTH_DENIED
+    answer_for_client = SUCCESSFUL_MESSAGE if state == SUCCESSFUL_MESSAGE else FAILED_MESSAGE
 
     return answer_for_client, check_auth_message.get("password")
 
 
-def prepare_message(message: str, cur_state: CurrentUserState) -> dict:
+def make_message(message: str, cur_state: CurrentUserState) -> dict:
     """Возвращает сообщение пользователя в требуемом формате"""
 
     return {"topic": cur_state.selected_topic,
@@ -297,7 +295,7 @@ def message_processing(message: str, id_message: int, chat_id: int) -> dict:
 
     elif cur_state.expected_text == "message":
         # Пользователь ввел сообщение. Вернем словарь с введенными пользователем полями.
-        current_message = prepare_message(message, cur_state)
+        current_message = make_message(message, cur_state)
         cur_state.reset_messages()
 
     elif cur_state.expected_text == "user":
@@ -325,7 +323,7 @@ def send_response_to_user(chat_id: int, message: str):
     bot.send_message(chat_id, message)
 
 
-def run_action_create_message(chat_id: int, user_id: int) -> None:
+def run_action_create_message(chat_id: int, cur_state: CurrentUserState) -> str:
     """
     Обработка команды создания сообщения (/create_message).
     Если логин и пароль не были предварительно введены пользователем,
@@ -333,131 +331,182 @@ def run_action_create_message(chat_id: int, user_id: int) -> None:
     """
 
     # Проверить необходимость ввода логина и пароля.
-    cur_state = get_user_state(chat_id)
     if cur_state.user:
         # Вывод кнопок для быстрого ввода топика для отправки.
         display_selection_buttons(chat_id)
+        answer_for_client = ""
     else:
-        send_response_to_user(user_id, "Перед вводом сообщения нужно пройти авторизацию")
+        answer_for_client = "Перед вводом сообщения нужно пройти авторизацию"
+
+    return answer_for_client
 
 
-def run_action_sign_in(chat_id: int, user_id: int) -> None:
-    """
-    Обработка команды авторизации (/sign_in).
-    Производится очистка текущих значений user/password.
-    Пользователю отправляется запрос на ввод учетных данных.
-    """
-
-    cur_state = get_user_state(chat_id)
-    cur_state.reset_user_auth()
-    cur_state.set_state("expected_text", "user")
-
-    send_response_to_user(user_id, "Введите логин для подключения к mqtt_publisher")
-
-
-def parse_message(command: re.Pattern, message: str, start_position: int) -> str:
-    """
-    Поиск выполняется c использованием шаблона регулярного выражения.
-    Служебное поле (такое как user, password итд) отбрасывается,
-    а следующее за ним поле, начинающееся со start_position, возвращается.
-    """
-
-    find = command.search(message)
-    if find:
-        result = find.group(0)[start_position:].strip()
-    else:
-        result = ""
-
-    return result
-
-
-def run_action_set(message: str, chat_id: int):
+def run_action_set(message: str, cur_state: CurrentUserState) -> str:
     """
     Обработка команды установки параметров (/set).
-    Описание команд приведено в WELCOME_MESSAGE.
     """
 
-    user = parse_message(CMD_SET_USR, message, 4)
-    password = parse_message(CMD_SET_PWRD, message, 8)
-    cur_state = get_user_state(chat_id)
-    answer_for_client = "OK"
+    device_name = re.findall(CMD_SET_DEVICE, message)
 
-    if user:
-        cur_state.reset_user_auth()
-        cur_state.set_state("user", user)
+    if device_name:
+        cur_state.set_state("device", device_name[0])
+        cur_state.update_topic()
+        answer_for_client = SUCCESSFUL_MESSAGE
+    else:
+        answer_for_client = FAILED_MESSAGE
 
-    if password and cur_state.user:
-        answer_for_client, hash_password = check_user_password(cur_state.user, password)
-        cur_state.set_state("password", hash_password)
-    elif password and not cur_state.user:
-        answer_for_client = "Перед вводом пароля требуется указать пользователя"
-
-    device = parse_message(CMD_SET_DEVICE, message, 6)
-    if device:
-        cur_state.set_state("device", device)
-
-        if cur_state.selected_topic:
-            cur_state.update_topic()
-            answer_for_client = f"Новый топик: {cur_state.selected_topic}"
-
-    topic = parse_message(CMD_SET_TOPIC, message, 5)
-    if topic:
-        cur_state.set_state("selected_topic", topic)
-        cur_state.set_device_from_topic()
-        answer_for_client = f"Новый топик: {topic}"
-
-    send_response_to_user(chat_id, answer_for_client)
+    return answer_for_client
 
 
-def run_action_show(message: str, chat_id: int):
+def run_action_show(message: str, cur_state: CurrentUserState) -> str:
     """
-    Обработка команды /show.
+    Обработка команды вывода данных пользователю (/sh).
     """
-
-    cur_state = get_user_state(chat_id)
 
     text = re.sub(IS_CMD_SHOW, "", message).strip().lower()
 
     if text == "topic":
-        value = cur_state.selected_topic
-    elif text == "device":
-        value = cur_state.device
+        answer_for_client = cur_state.selected_topic
+    elif text == "dev":
+        answer_for_client = cur_state.device
     elif text == "user":
-        value = cur_state.user
+        answer_for_client = cur_state.user
+    elif text == "auth":
+        answer_for_client = check_auth(cur_state.user, cur_state.password)
+    else:
+        answer_for_client = UNKNOWN_COMMAND
 
-    send_response_to_user(chat_id, value)
+    if not answer_for_client:
+        answer_for_client = "Нет данных"
+
+    return answer_for_client
 
 
-def run_action_send(message: str, chat_id: int, user_id: int):
+def run_action_send(message: str, cur_state: CurrentUserState) -> str:
     """
-    Обработка команды /send.
+    Обработка команды отправки сообщений в mqtt_publisher (/send).
     """
 
-    text = re.sub(IS_CMD_SEND, "", message).strip()
-    cur_state = get_user_state(chat_id)
-    current_message = prepare_message(text, cur_state)
-    result = deliver_message(json.dumps(current_message))
-    send_response_to_user(user_id, result)
+    if check_auth(cur_state.user, cur_state.password) != SUCCESSFUL_MESSAGE:
+        answer_for_client = "Перед отправкой сообщения нужно пройти авторизацию"
+    elif not cur_state.device:
+        answer_for_client = "Невозможно отправить сообщение, т.к." \
+                            "не указано устройство-получатель."
+    else:
+        cur_state.update_topic()
+
+        text = re.sub(IS_CMD_SEND, "", message).strip()
+        current_message = make_message(text, cur_state)
+        answer_for_client = deliver_message(json.dumps(current_message))
+
+    return answer_for_client
 
 
-def run_command(text_message: str, chat_id: int, user_id: int):
+def make_password_hash(user: str, password: str) -> tuple:
+    """
+    Хеширование введенного пользователем пароля для отправки в mqtt_publisher.
+    Соль для хеширования предоставляет mqtt_publisher по имени пользователя.
+
+    Возвращаемое значение: кортеж из хэша пароля и статуса операции
+    """
+
+    get_salt_message = {"action": "/get_salt", "user": user}
+
+    try:
+        received_salt = deliver_message(json.dumps(get_salt_message))
+
+        if received_salt:
+            hash_password = encode_password(password, received_salt)
+            answer_for_client = SUCCESSFUL_MESSAGE
+        else:
+            hash_password = None
+            answer_for_client = "Неизвестный пользователь." \
+                                "Невозможно хешировать пароль."
+
+    except ConnectionRefusedError:
+        hash_password = None
+        answer_for_client = MESSAGE_CONNECTION_LOST
+
+    return hash_password, answer_for_client
+
+
+def check_auth(user: str, password: str) -> str:
+    """
+    Проверка авторизации пользователя.
+    Логин и хэш пароля передаются в mqtt_publisher для проверки.
+    Если этих данных нет, значит пользователь еще не был авторизован в системе.
+
+    Возвращаемое значение: текст сообщения для отправки пользователю -
+    результат авторизации (успешно/не успешно) или сообщение о проблеме.
+    """
+
+    if not user or not password:
+        answer_for_client = "Пользователь не авторизован в системе"
+    else:
+        check_auth_message = {"action": "/check_auth",
+                              "user": user,
+                              "password": password}
+        try:
+            state = deliver_message(json.dumps(check_auth_message))
+            answer_for_client = SUCCESSFUL_MESSAGE if state == SUCCESSFUL_MESSAGE else FAILED_MESSAGE
+        except ConnectionRefusedError:
+            answer_for_client = MESSAGE_CONNECTION_LOST
+
+    return answer_for_client
+
+
+def run_action_auth(message: str, cur_state: CurrentUserState) -> str:
+    """
+    Обработка авторизации пользователя.
+    Команда должна иметь формат: /auth user:password
+    В случае корректного ввода команды полученный пароль хешируется
+    и передается в сервис mqtt_publisher для проверки.
+
+    Возвращаемое значение: текст сообщения для отправки пользователю -
+    результат авторизации (успешно/не успешно) или сообщение о неправильном вводе команды
+    """
+
+    cur_state.reset_user_auth()
+
+    _user = re.findall(CMD_AUTH_USER, message)
+    _password = re.findall(CMD_AUTH_PASSWORD, message)
+
+    if _user and _password:
+        cur_state.set_state("user", _user[0])
+        hash_password, answer_for_client = make_password_hash(cur_state.user,
+                                                              _password[0])
+        cur_state.set_state("password", hash_password)
+        answer_for_client = check_auth(cur_state.user, cur_state.password)
+        cur_state.update_topic()
+    else:
+        answer_for_client = AUTH_FORMAT_ERROR
+
+    return answer_for_client
+
+
+def run_command(text_message: str, chat_id: int):
     """
     Выполнение команд введенных пользователем. Командой считается
     сообщение начинающееся с символа /.
     """
 
-    if IS_CMD_SET.match(text_message):
-        run_action_set(text_message, chat_id)
+    cur_state = get_user_state(chat_id)
+
+    if IS_CMD_AUTH.match(text_message):
+        answer_for_client = run_action_auth(text_message, cur_state)
+    elif IS_CMD_SET.match(text_message):
+        answer_for_client = run_action_set(text_message, cur_state)
     elif IS_CMD_SHOW.match(text_message):
-        run_action_show(text_message, chat_id)
+        answer_for_client = run_action_show(text_message, cur_state)
     elif IS_CMD_SEND.match(text_message):
-        run_action_send(text_message, chat_id, user_id)
+        answer_for_client = run_action_send(text_message, cur_state)
     elif IS_CMD_CREATE_MSG.match(text_message):
-        run_action_create_message(chat_id, user_id)
-    elif IS_CMD_SIGN_IN.match(text_message):
-        run_action_sign_in(chat_id, user_id)
+        answer_for_client = run_action_create_message(chat_id, cur_state)
     else:
-        send_response_to_user(chat_id, "Неизвестная команда")
+        answer_for_client = UNKNOWN_COMMAND
+
+    if answer_for_client:
+        send_response_to_user(chat_id, answer_for_client)
 
 
 @bot.message_handler(content_types=['text'])
