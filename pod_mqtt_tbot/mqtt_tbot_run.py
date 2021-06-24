@@ -15,6 +15,7 @@ from config import get_settings  # type: ignore
 import requests
 from influxdb_client import InfluxDBClient, rest
 from urllib3.exceptions import NewConnectionError, LocationParseError
+from event_logger import get_logger
 
 # Является ли сообщение пользователя командой
 IS_CMD = re.compile(r"/\w+")
@@ -50,6 +51,7 @@ WELCOME_MESSAGE = "Доступные команды:\n" \
 
 clients_state: dict = {}
 bot = telebot.TeleBot(get_settings("tg_token"))
+event_log = get_logger("__listener__")
 
 
 class CurrentUserState:
@@ -328,6 +330,7 @@ def connect_db() -> InfluxDBClient:
     client = InfluxDBClient(url=get_settings("db_url"),
                             token=get_settings("db_token"),
                             org=get_settings("db_org"))
+    event_log.info(client.health().status)
     return client
 
 
@@ -361,7 +364,7 @@ def get_online(db_name: str) -> list:
     |> limit(n: 1)'
 
     answer = get_response_from_db(db_client, query)
-
+    event_log.info(len(answer))
     devices = []
     for table in answer:
         for record in table.records:
