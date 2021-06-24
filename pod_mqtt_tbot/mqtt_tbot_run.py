@@ -13,6 +13,8 @@ from telebot import types  # type: ignore
 from requests.exceptions import ReadTimeout  # type: ignore
 from config import get_settings  # type: ignore
 import requests
+from influxdb_client import InfluxDBClient, rest
+from urllib3.exceptions import NewConnectionError, LocationParseError
 
 # Является ли сообщение пользователя командой
 IS_CMD = re.compile(r"/\w+")
@@ -320,6 +322,56 @@ def run_action_create_message(chat_id: int, cur_state: CurrentUserState) -> str:
     return answer_for_client
 
 
+def connect_db() -> InfluxDBClient:
+    """Подключение к базе данных"""
+
+    client = InfluxDBClient(url=get_settings("db_url"),
+                            token=get_settings("db_token"),
+                            org=get_settings("db_org"))
+    return client
+
+
+def get_response_from_db(db_client: InfluxDBClient, query: str) -> list:
+    """
+    Возвращает результат запроса в виде списка. Если в ходе получения запроса произошла ошибка,
+    то возвращается пустой список.
+    """
+
+    try:
+        answer = db_client.query_api().query(org=get_settings("db_org"),
+                                             query=query)
+        return answer
+
+    except (rest.ApiException, NewConnectionError, LocationParseError, IndexError):
+        return []
+
+
+def get_online(db_name: str) -> list:
+    """
+    Возвращает список всех девайсов, которые отправляли данные последние 30 дней,
+    а так же время последнего полученного сообщения.
+    Если таких девайсов нет, то список будет пустым.
+    """
+
+    db_client = connect_db()
+
+    query = f'from(bucket:"{db_name}")\
+    |> range(start: -30d)\
+    |> sort(columns: ["_time"], desc: true)\
+    |> limit(n: 1)'
+
+    answer = get_response_from_db(db_client, query)
+
+    devices = []
+    for table in answer:
+        for record in table.records:
+            last_time = record.get_time().strftime("%d.%m.%Y %H:%M:%S")
+            device_name = record.values.get("device")
+            devices.append(f"device: {device_name}, last time: {last_time}")
+
+    return devices
+
+
 def run_action_set(message: str, cur_state: CurrentUserState) -> str:
     """
     Обработка команды установки параметров (/set).
@@ -352,6 +404,9 @@ def run_action_show(message: str, cur_state: CurrentUserState) -> str:
         answer_for_client = cur_state.user
     elif text == "auth":
         answer_for_client = check_auth(cur_state.user, cur_state.password)
+    elif text == "online":
+        answer_for_client = get_online(db_name=cur_state.user)
+        answer_for_client = "\n".join(answer_for_client)
     else:
         answer_for_client = UNKNOWN_COMMAND
 
@@ -499,7 +554,7 @@ def get_message(message: telebot.types.Message) -> None:
     text_message = message.text.lower()
 
     if IS_CMD.match(text_message):
-        run_command(text_message, message.chat.id, message.from_user.id)
+        run_command(text_message, message.chat.id)
     else:
 
         # Обработка ввода сообщения пользователем.
