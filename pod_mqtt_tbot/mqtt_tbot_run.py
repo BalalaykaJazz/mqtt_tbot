@@ -356,6 +356,7 @@ def get_online(db_name: str) -> list:
     Если таких девайсов нет, то список будет пустым.
     """
 
+    event_log.info("get_online")
     db_client = connect_db()
 
     query = f'from(bucket:"{db_name}")\
@@ -364,7 +365,7 @@ def get_online(db_name: str) -> list:
     |> limit(n: 1)'
 
     answer = get_response_from_db(db_client, query)
-    event_log.info(len(answer))
+    event_log.info("размер ответа %s", len(answer))
     devices = []
     for table in answer:
         for record in table.records:
@@ -399,6 +400,9 @@ def run_action_show(message: str, cur_state: CurrentUserState) -> str:
 
     text = re.sub(IS_CMD_SHOW, "", message).strip().lower()
 
+    event_log.info(message)
+    event_log.info(text)
+
     if text == "topic":
         answer_for_client = cur_state.selected_topic
     elif text == "dev":
@@ -410,6 +414,7 @@ def run_action_show(message: str, cur_state: CurrentUserState) -> str:
     elif text == "online":
         answer_for_client = get_online(db_name=cur_state.user)
         answer_for_client = "\n".join(answer_for_client)
+        event_log.info("ответ текстом %s", answer_for_client)
     else:
         answer_for_client = UNKNOWN_COMMAND
 
@@ -527,6 +532,8 @@ def run_command(text_message: str, chat_id: int):
     сообщение начинающееся с символа /.
     """
 
+    event_log.info(text_message)
+
     cur_state = get_user_state(chat_id)
 
     if IS_CMD_AUTH.match(text_message):
@@ -595,5 +602,5 @@ if __name__ == "__main__":
     if not get_settings("correctly"):
         raise SystemExit("Ошибка при загрузке настроек. Работа программы завершена")
 
-    print(f"Сервис запущен. Подключен бот {get_settings('name')}")
+    event_log.info("Сервис запущен. Подключен бот %s", get_settings("name"))
     start_pooling()
