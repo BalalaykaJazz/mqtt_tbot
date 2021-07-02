@@ -330,7 +330,6 @@ def connect_db() -> InfluxDBClient:
     client = InfluxDBClient(url=get_settings("db_url"),
                             token=get_settings("db_token"),
                             org=get_settings("db_org"))
-    event_log.info(client.health().status)
     return client
 
 
@@ -356,7 +355,6 @@ def get_online(db_name: str) -> list:
     Если таких девайсов нет, то список будет пустым.
     """
 
-    event_log.info("get_online")
     db_client = connect_db()
 
     query = f'from(bucket:"{db_name}")\
@@ -364,8 +362,11 @@ def get_online(db_name: str) -> list:
     |> sort(columns: ["_time"], desc: true)\
     |> limit(n: 1)'
 
-    answer = get_response_from_db(db_client, query)
-    event_log.info("размер ответа %s", len(answer))
+    try:
+        answer = get_response_from_db(db_client, query)
+    except Exception as err:
+        event_log.info(str(err))
+
     devices = []
     for table in answer:
         for record in table.records:
@@ -400,9 +401,6 @@ def run_action_show(message: str, cur_state: CurrentUserState) -> str:
 
     text = re.sub(IS_CMD_SHOW, "", message).strip().lower()
 
-    event_log.info(message)
-    event_log.info(text)
-
     if text == "topic":
         answer_for_client = cur_state.selected_topic
     elif text == "dev":
@@ -414,7 +412,6 @@ def run_action_show(message: str, cur_state: CurrentUserState) -> str:
     elif text == "online":
         answer_for_client = get_online(db_name=cur_state.user)
         answer_for_client = "\n".join(answer_for_client)
-        event_log.info("ответ текстом %s", answer_for_client)
     else:
         answer_for_client = UNKNOWN_COMMAND
 
@@ -531,8 +528,6 @@ def run_command(text_message: str, chat_id: int):
     Выполнение команд введенных пользователем. Командой считается
     сообщение начинающееся с символа /.
     """
-
-    event_log.info(text_message)
 
     cur_state = get_user_state(chat_id)
 
