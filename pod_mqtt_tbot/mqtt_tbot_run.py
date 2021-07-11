@@ -54,13 +54,11 @@ class CurrentUserState:
     Класс отражает состояние работы с пользователем на текущий момент.
 
     selected_topic - выбранный пользователем топик для отправки в mqtt.
-    expected_text - введенный пользователем текст сообщения для отправки.
     user и password - логин и пароль текущего пользователя.
     """
 
     def __init__(self):
         self.selected_topic = ""
-        self.expected_text = ""
         self.user = ""
         self.password = ""
         self.device = ""
@@ -84,7 +82,6 @@ class CurrentUserState:
     def reset_messages(self):
         """Сбросить состояния для ввода новых сообщений"""
         self.selected_topic = ""
-        self.expected_text = ""
 
     def reset_user_auth(self):
         """Сброс логина и пароля"""
