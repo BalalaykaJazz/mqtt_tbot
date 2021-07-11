@@ -33,15 +33,15 @@ MESSAGE_CONNECTION_LOST = "Потеряно соединение с сервис
 AUTH_FORMAT_ERROR = "Некорректный формат команды /auth\n" \
                     "Требуемый формат: /auth user:password"
 WELCOME_MESSAGE = "Доступные команды:\n" \
-                  "/set auth user:password - имя пользователя и пароль," \
+                  "set auth user:password - имя пользователя и пароль," \
                   "доступные для подключения к mqtt_publisher.\n" \
                   "После ввода команды происходит проверка введенных данных" \
                   "на валидность.\n" \
-                  "/set dev *** - устройство для отправки сообщений.\n" \
-                  "/send *** - отправить сообщение в mqtt_publisher." \
+                  "set dev *** - устройство для отправки сообщений.\n" \
+                  "send *** - отправить сообщение в mqtt_publisher." \
                   "топик сообщения формируется автоматически в формате:\n" \
                   "/<user>/<device>/in/params\n" \
-                  "/sh auth, /sh dev, /sh topic - проверка введенных данных."
+                  "sh auth, sh dev, sh topic - проверка введенных данных."
 SOCKET_TIMEOUT = 30
 
 clients_state: dict = {}
@@ -181,7 +181,7 @@ def send_response_to_user(chat_id: int, message: str):
 
 def run_action_set(message: str, cur_state: CurrentUserState) -> str:
     """
-    Обработка команды установки параметров (/set).
+    Обработка команды установки параметров (set).
     """
 
     device_name = re.findall(CMD_SET_DEVICE, message)
@@ -198,7 +198,7 @@ def run_action_set(message: str, cur_state: CurrentUserState) -> str:
 
 def run_action_show(message: str, cur_state: CurrentUserState) -> str:
     """
-    Обработка команды вывода данных пользователю (/sh).
+    Обработка команды вывода данных пользователю (sh).
     """
 
     text = re.sub(IS_CMD_SHOW, "", message).strip().lower()
@@ -225,7 +225,7 @@ def run_action_show(message: str, cur_state: CurrentUserState) -> str:
 
 def run_action_send(message: str, cur_state: CurrentUserState) -> str:
     """
-    Обработка команды отправки сообщений в mqtt_publisher (/send).
+    Обработка команды отправки сообщений в mqtt_publisher (send).
     """
 
     if check_auth(cur_state.user, cur_state.password) != SUCCESSFUL_MESSAGE:
@@ -299,7 +299,7 @@ def check_auth(user: str, password: str) -> str:
 def run_action_auth(message: str, cur_state: CurrentUserState) -> str:
     """
     Обработка авторизации пользователя.
-    Команда должна иметь формат: /auth user:password
+    Команда должна иметь формат: auth user:password
     В случае корректного ввода команды полученный пароль хешируется
     и передается в сервис mqtt_publisher для проверки.
 
@@ -325,11 +325,19 @@ def run_action_auth(message: str, cur_state: CurrentUserState) -> str:
     return answer_for_client
 
 
-def run_command(text_message: str, chat_id: int):
+@bot.message_handler(content_types=['text'])
+def get_message(message: telebot.types.Message) -> None:
     """
-    Выполнение команд введенных пользователем. Командой считается
-    сообщение начинающееся с символа /.
+    Обрабатывается полученное от пользователя сообщение.
+    Сообщение должно иметь следующий формат:
+    '<Заголовок> <текст сообщения>'
+    Заголовок содержит имя команды: sh, send, set и другие.
+    Текст сообщения содержит все необходимые параметры для
+    выполнения команды сервером.
     """
+
+    text_message = message.text.lower()
+    chat_id = message.chat.id
 
     cur_state = get_user_state(chat_id)
 
@@ -346,18 +354,6 @@ def run_command(text_message: str, chat_id: int):
 
     if answer_for_client:
         send_response_to_user(chat_id, answer_for_client)
-
-
-@bot.message_handler(content_types=['text'])
-def get_message(message: telebot.types.Message) -> None:
-    """
-    Обрабатывается полученное сообщение.
-    Если сообщение введено полностью, то оно проверяется
-    на наличие всех необходимых полей и отправляется в сокет.
-    """
-
-    text_message = message.text.lower()
-    run_command(text_message, message.chat.id)
 
 
 def start_pooling():
