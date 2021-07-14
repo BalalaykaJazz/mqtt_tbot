@@ -7,14 +7,13 @@ import json
 import ssl
 import socket
 import re
-import telebot  # type: ignore
 from user_auth import encode_password  # type: ignore
-from telebot import types  # type: ignore
 from requests.exceptions import ReadTimeout  # type: ignore
 from config import settings, is_main_settings_correct  # type: ignore
 import requests
 from event_logger import get_info_logger, get_error_logger
 from db_query import get_online
+from aiogram import Bot, Dispatcher, executor, types
 
 # Является ли сообщение пользователя командой
 IS_CMD_SET = re.compile(r"set\s+")
@@ -45,7 +44,8 @@ WELCOME_MESSAGE = "Доступные команды:\n" \
 SOCKET_TIMEOUT = 30
 
 clients_state: dict = {}
-bot = telebot.TeleBot(settings.bot_token)
+bot = Bot(token=settings.bot_token)
+dp = Dispatcher(bot)
 event_log = get_info_logger("INFO__listener__")
 error_log = get_error_logger("ERR__listener__")
 
@@ -122,16 +122,16 @@ def create_common_buttons() -> types.ReplyKeyboardMarkup:
     return keyboard
 
 
-@bot.message_handler(commands=['start', 'help'])
-def send_welcome(message: telebot.types.Message):
+@dp.message_handler(commands=['start', 'help'])
+async def send_welcome(message: types.Message):
     """
     Выводится стартовая информация с подсказками пользователю,
     а так же основные кнопки управления.
     """
 
-    bot.send_message(message.from_user.id,
-                     WELCOME_MESSAGE,
-                     reply_markup=create_common_buttons())
+    await bot.send_message(message.from_user.id,
+                           WELCOME_MESSAGE,
+                           reply_markup=create_common_buttons())
 
 
 def deliver_message(message: str) -> str:
@@ -174,10 +174,10 @@ def make_message(message: str, cur_state: CurrentUserState) -> dict:
             "password": cur_state.password}
 
 
-def send_response_to_user(chat_id: int, message: str):
+async def send_response_to_user(chat_id: int, message: str):
     """Отправляет в чат телеграмма сообщение для пользователя"""
 
-    bot.send_message(chat_id, message)
+    await bot.send_message(chat_id, message)
 
 
 def run_action_set(message: str, cur_state: CurrentUserState) -> str:
@@ -326,8 +326,8 @@ def run_action_auth(message: str, cur_state: CurrentUserState) -> str:
     return answer_for_client
 
 
-@bot.message_handler(content_types=['text'])
-def get_message(message: telebot.types.Message) -> None:
+@dp.message_handler(content_types=['text'])
+async def get_message(message: types.Message) -> None:
     """
     Обрабатывается полученное от пользователя сообщение.
     Сообщение должно иметь следующий формат:
@@ -354,14 +354,14 @@ def get_message(message: telebot.types.Message) -> None:
         answer_for_client = UNKNOWN_COMMAND
 
     if answer_for_client:
-        send_response_to_user(chat_id, answer_for_client)
+        await send_response_to_user(chat_id, answer_for_client)
 
 
 def start_pooling():
     """Бесконечный цикл работы с ботом"""
 
     try:
-        bot.polling(none_stop=True)
+        executor.start_polling(dp, skip_updates=True)
     except (ReadTimeout, requests.exceptions.ConnectTimeout):
         start_pooling()
 
