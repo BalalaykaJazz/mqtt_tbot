@@ -11,9 +11,9 @@ import telebot  # type: ignore
 from user_auth import encode_password  # type: ignore
 from telebot import types  # type: ignore
 from requests.exceptions import ReadTimeout  # type: ignore
-from config import get_settings  # type: ignore
+from config import settings, is_main_settings_correct  # type: ignore
 import requests
-from event_logger import get_logger
+from event_logger import get_info_logger, get_error_logger
 from db_query import get_online
 
 # Является ли сообщение пользователя командой
@@ -45,8 +45,9 @@ WELCOME_MESSAGE = "Доступные команды:\n" \
 SOCKET_TIMEOUT = 30
 
 clients_state: dict = {}
-bot = telebot.TeleBot(get_settings("tg_token"))
-event_log = get_logger("__listener__")
+bot = telebot.TeleBot(settings.bot_token)
+event_log = get_info_logger("INFO__listener__")
+error_log = get_error_logger("ERR__listener__")
 
 
 class CurrentUserState:
@@ -142,13 +143,13 @@ def deliver_message(message: str) -> str:
     socket.setdefaulttimeout(SOCKET_TIMEOUT)
     server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 
-    if get_settings("use_ssl"):
+    if settings.use_ssl:
         server_socket = ssl.wrap_socket(server_socket,
                                         cert_reqs=ssl.CERT_REQUIRED,
-                                        ca_certs=get_settings("SSL_KEYFILE_PATH"))
+                                        ca_certs=settings.ssl_keyfile_path)
 
     try:
-        server_socket.connect((get_settings("host"), get_settings("port")))
+        server_socket.connect((settings.server_host, settings.server_port))
 
         if message:
             server_socket.send(message.encode())
@@ -367,8 +368,9 @@ def start_pooling():
 
 if __name__ == "__main__":
 
-    if not get_settings("correctly"):
-        raise SystemExit("Ошибка при загрузке настроек. Работа программы завершена")
+    if not is_main_settings_correct(settings):
+        error_log.error("Ошибка при загрузке настроек")
+        raise SystemExit("Работа программы завершена")
 
-    event_log.info("Сервис запущен. Подключен бот %s", get_settings("name"))
+    event_log.info("Сервис запущен. Подключен бот %s", settings.bot_name)
     start_pooling()

@@ -1,18 +1,19 @@
 """Модуль для взаимодействия с базой данных"""
 from influxdb_client import InfluxDBClient, rest
-from config import get_settings
+from config import settings
 from urllib3.exceptions import NewConnectionError, LocationParseError
-from event_logger import get_logger
+from event_logger import get_info_logger, get_error_logger
 
-event_log = get_logger("db_query")
+event_log = get_info_logger("db_query")
+error_log = get_error_logger("db_query")
 
 
 def connect_db() -> InfluxDBClient:
     """Подключение к базе данных"""
 
-    client = InfluxDBClient(url=get_settings("db_url"),
-                            token=get_settings("db_token"),
-                            org=get_settings("db_org"))
+    client = InfluxDBClient(url=settings.db_url,
+                            token=settings.db_token,
+                            org=settings.db_org)
     return client
 
 
@@ -23,7 +24,7 @@ def get_response_from_db(db_client: InfluxDBClient, query: str) -> list:
     """
 
     try:
-        answer = db_client.query_api().query(org=get_settings("db_org"),
+        answer = db_client.query_api().query(org=settings.db_org,
                                              query=query)
         return answer
 
