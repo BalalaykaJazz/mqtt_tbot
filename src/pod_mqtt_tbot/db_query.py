@@ -1,11 +1,11 @@
 """Модуль для взаимодействия с базой данных"""
 from influxdb_client import InfluxDBClient, rest
-from config import settings
 from urllib3.exceptions import NewConnectionError, LocationParseError
-from event_logger import get_info_logger, get_error_logger
+from src.pod_mqtt_tbot.config import settings
+from src.pod_mqtt_tbot.event_logger import get_info_logger, get_error_logger
 
-event_log = get_info_logger("db_query")
-error_log = get_error_logger("db_query")
+event_log = get_info_logger("INFO_db_query")
+error_log = get_error_logger("ERR_db_query")
 
 
 def connect_db() -> InfluxDBClient:
@@ -48,7 +48,7 @@ def get_online(db_name: str) -> list:
 
     try:
         answer = get_response_from_db(db_client, query)
-    except Exception as err:
+    except Exception as err:  # pylint: disable = broad-except
         event_log.info(str(err))
 
     devices = []

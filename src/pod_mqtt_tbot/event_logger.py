@@ -5,7 +5,7 @@
 """
 import logging
 import sys
-from config import get_full_path
+from src.pod_mqtt_tbot.config import get_full_path
 
 FORMATTER = logging.Formatter("%(asctime)s — %(name)s — %(levelname)s — %(message)s")
 SHORT_FORMATTER = logging.Formatter("%(levelname)s — %(message)s")
