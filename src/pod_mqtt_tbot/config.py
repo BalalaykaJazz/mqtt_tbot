@@ -47,10 +47,6 @@ class Settings(BaseSettings):  # pylint: disable = too-few-public-methods
     db_org: str = ""
 
 
-settings = Settings(_env_file=".env",
-                    _env_file_encoding="utf-8")
-
-
 def is_main_settings_correct(_settings: Settings) -> bool:
     """
     Проверяет корректность настроек для подключения к
@@ -63,3 +59,13 @@ def is_main_settings_correct(_settings: Settings) -> bool:
         return False
 
     return True
+
+
+settings = Settings(_env_file=".env",
+                    _env_file_encoding="utf-8")
+
+if not os.path.exists("logs"):
+    os.mkdir("logs")
+
+
+
