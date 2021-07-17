@@ -1,5 +1,5 @@
 """
-Модуль используется для считывания файлов, необходимых для корректной работы сервиса.
+Модуль используется для загрузки настроек, необходимых для корректной работы сервиса.
 """
 import os
 from pydantic import BaseSettings
@@ -22,8 +22,9 @@ class Settings(BaseSettings):  # pylint: disable = too-few-public-methods
     bot_token - уникальный токен для телеграм бота. Токен известен создателю бота.
      .
     mqtt_publisher - микросервис для приема команд от пользователя и отправки их в mqtt брокер.
-    server_host - ip адрес сокета микросервиса
-    server_port - порт сокета микросервиса
+    server_host - ip адрес сокета, к которому происходит подключение.
+    server_port - порт сокета, к которому происходит подключение.
+    use_ssl - признак использования ssl для соединения с сокетом.
 
     database - подключение к базе данных для получения ответа на команду пользователя.
     db_url - адрес базы данных
@@ -35,7 +36,7 @@ class Settings(BaseSettings):  # pylint: disable = too-few-public-methods
     server_host: str = "127.0.0.1"
     server_port: int = 5000
     use_ssl: bool = False
-    ssl_keyfile_path = SSL_KEYFILE_PATH
+    ssl_keyfile_path: str = SSL_KEYFILE_PATH
 
     # telegram
     bot_name: str = "unknown bot name"
