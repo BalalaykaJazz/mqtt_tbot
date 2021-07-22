@@ -1,8 +1,7 @@
 """Модуль для взаимодействия с базой данных"""
 from influxdb_client import InfluxDBClient, rest
 from urllib3.exceptions import NewConnectionError, LocationParseError
-from src.pod_mqtt_tbot.config import settings
-from src.pod_mqtt_tbot.event_logger import get_info_logger, get_error_logger
+from src.pod_mqtt_tbot import settings, get_info_logger, get_error_logger  # pylint: disable = import-error
 
 event_log = get_info_logger("INFO_db_query")
 error_log = get_error_logger("ERR_db_query")

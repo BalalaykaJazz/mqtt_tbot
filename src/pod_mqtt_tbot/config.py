@@ -67,6 +67,3 @@ settings = Settings(_env_file=".env",
 
 if not os.path.exists("logs"):
     os.mkdir("logs")
-
-
-

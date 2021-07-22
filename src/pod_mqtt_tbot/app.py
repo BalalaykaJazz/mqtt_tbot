@@ -1,9 +1,7 @@
 """Процедуры с обработкой команд пользователя"""
 import re
-from src.pod_mqtt_tbot.db_query import get_online
-from src.pod_mqtt_tbot.delivery import deliver_message
-from src.pod_mqtt_tbot.event_logger import get_info_logger, get_error_logger
-from src.pod_mqtt_tbot.user_auth import encode_password
+from src.pod_mqtt_tbot import get_online, deliver_message  # pylint: disable = import-error
+from src.pod_mqtt_tbot import get_info_logger, get_error_logger, encode_password  # pylint: disable = import-error
 
 IS_CMD_SET = re.compile(r"set\s+")
 IS_CMD_SHOW = re.compile(r"sh\s+")

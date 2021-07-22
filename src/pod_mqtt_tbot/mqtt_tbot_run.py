@@ -6,9 +6,9 @@
 
 import requests
 from aiogram import Bot, Dispatcher, executor, types
-from app import execute_command  # pylint: disable = import-error
-from config import settings, is_main_settings_correct  # pylint: disable = import-error
-from event_logger import get_info_logger, get_error_logger  # pylint: disable = import-error
+from src.pod_mqtt_tbot import execute_command  # pylint: disable = import-error
+from src.pod_mqtt_tbot import settings, is_main_settings_correct  # pylint: disable = import-error
+from src.pod_mqtt_tbot import get_info_logger, get_error_logger  # pylint: disable = import-error
 
 WELCOME_MESSAGE = "Доступные команды:\n" \
                   "set auth user:password - имя пользователя и пароль," \
