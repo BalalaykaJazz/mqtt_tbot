@@ -6,9 +6,9 @@
 
 import requests
 from aiogram import Bot, Dispatcher, executor, types
-from src.pod_mqtt_tbot import execute_command  # pylint: disable = import-error
-from src.pod_mqtt_tbot import settings, is_main_settings_correct  # pylint: disable = import-error
-from src.pod_mqtt_tbot import get_info_logger, get_error_logger  # pylint: disable = import-error
+from src.mqtt_tbot.app import execute_command  # pylint: disable = import-error
+from src.mqtt_tbot.config import settings, is_main_settings_correct  # pylint: disable = import-error
+from src.mqtt_tbot.event_logger import get_info_logger, get_error_logger  # pylint: disable = import-error
 
 WELCOME_MESSAGE = "Доступные команды:\n" \
                   "set auth user:password - имя пользователя и пароль," \
@@ -85,7 +85,6 @@ def start_pooling():
 
 
 if __name__ == "__main__":
-
     if not is_main_settings_correct(settings):
         error_log.error("Ошибка при загрузке настроек")
         raise SystemExit("Работа программы завершена")

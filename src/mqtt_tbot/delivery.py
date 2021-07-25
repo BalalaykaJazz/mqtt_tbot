@@ -2,7 +2,7 @@
 import json
 import socket
 import ssl
-from src.pod_mqtt_tbot import settings  # pylint: disable = import-error
+from .config import settings  # pylint: disable = import-error
 
 SOCKET_TIMEOUT = 30
 

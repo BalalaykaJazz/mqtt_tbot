@@ -2,7 +2,7 @@
 
 import re
 import pytest
-from src.pod_mqtt_tbot.app import search_by_template
+from src.mqtt_tbot.app import search_by_template
 
 events_to_try = [
     ("without command", ""),

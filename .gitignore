@@ -1,4 +1,4 @@
 # Project exclude paths
 /venv/
 /src/pod_mqtt_tbot/settings/
-.env
+src/mqtt_tbot/.env
