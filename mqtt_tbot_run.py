@@ -5,7 +5,7 @@
 """
 
 import requests
-from aiogram import Bot, Dispatcher, executor, types
+from aiogram import Bot, Dispatcher, executor, types, utils
 from src.mqtt_tbot.app import execute_command  # pylint: disable = import-error
 from src.mqtt_tbot.config import settings, is_main_settings_correct  # pylint: disable = import-error
 from src.mqtt_tbot.event_logger import get_info_logger, get_error_logger  # pylint: disable = import-error
@@ -79,6 +79,8 @@ def start_pooling():
 
     try:
         executor.start_polling(dp, skip_updates=True)
+    except utils.exceptions.TerminatedByOtherGetUpdates:
+        error_log.error("Попытка запустить второй экземпляр бота")
     except (requests.exceptions.ReadTimeout,
             requests.exceptions.ConnectTimeout):
         start_pooling()

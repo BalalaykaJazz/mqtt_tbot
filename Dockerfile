@@ -1,9 +1,17 @@
-FROM python:3.7-alpine3.8
+FROM python
 
-RUN pip install pyTelegramBotAPI
-RUN pip install influxdb_client
+WORKDIR /app
 
-# COPY ./requirements.txt /src/
-COPY ./mqtt_tbot /src/
+#RUN pip install aiogram
+#RUN pip install influxdb_client
+#RUN pip install requests
+#RUN pip install pydantic
+#RUN pip install python-dotenv
 
-CMD ["python", "/src/mqtt_tbot_run.py"]
+COPY mqtt_tbot_run.py /app
+COPY requirements.txt /app
+COPY src /app/src
+
+RUN pip install -r /app/requirements.txt
+RUN ["mkdir", "/app/src/mqtt_tbot/logs"]
+CMD ["python", "mqtt_tbot_run.py"]
