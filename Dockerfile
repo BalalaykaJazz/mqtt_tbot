@@ -4,6 +4,6 @@ RUN pip install pyTelegramBotAPI
 RUN pip install influxdb_client
 
 # COPY ./requirements.txt /src/
-COPY ./pod_mqtt_tbot /src/
+COPY ./mqtt_tbot /src/
 
 CMD ["python", "/src/mqtt_tbot_run.py"]
