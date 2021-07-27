@@ -7,7 +7,7 @@ import hashlib
 
 def encode_password(client_password: str, salt_hash: str) -> str:
     """
-    Пароль пользователя хешируется и отправляется в mqtt_publisher
+    Возвращает соль и хэш введенного пользователем пароля для доступа в mqtt_publisher.
     """
 
     password_hash = hashlib.pbkdf2_hmac("sha256",
