@@ -5,12 +5,17 @@
 """
 import logging
 import sys
+import os
 from .config import get_full_path  # pylint: disable = import-error
 
 FORMATTER = logging.Formatter("%(asctime)s — %(name)s — %(levelname)s — %(message)s")
 SHORT_FORMATTER = logging.Formatter("%(levelname)s — %(message)s")
 EVENT_LOG_FILE = get_full_path("logs/events.log")
 ERROR_LOG_FILE = get_full_path("logs/error.log")
+
+logs_full_path = get_full_path("logs")
+if not os.path.exists(logs_full_path):
+    os.mkdir(logs_full_path)
 
 
 def _get_info_handler():
