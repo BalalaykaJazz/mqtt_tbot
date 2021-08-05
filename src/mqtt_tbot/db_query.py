@@ -51,12 +51,14 @@ def get_online(db_name: str) -> list:
     |> group(columns: ["_value"], mode: "by")\
     |> last()'
 
+    devices: list = []
+
     try:
         answer = get_response_from_db(db_client, query)
     except Exception as err:  # pylint: disable = broad-except
         event_log.info(str(err))
+        return devices
 
-    devices = []
     for table in answer:
         for record in table.records:
             timestamp = record.get_time() + timedelta(hours=3)
