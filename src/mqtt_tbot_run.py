@@ -6,9 +6,9 @@
 
 import requests
 from aiogram import Bot, Dispatcher, executor, types, utils
-from src.mqtt_tbot.app import execute_command  # pylint: disable = import-error
-from src.mqtt_tbot.config import settings, is_main_settings_correct  # pylint: disable = import-error
-from src.mqtt_tbot.event_logger import get_info_logger, get_error_logger  # pylint: disable = import-error
+from mqtt_tbot.app import execute_command  # pylint: disable = import-error
+from mqtt_tbot.config import settings, is_main_settings_correct  # pylint: disable = import-error
+from mqtt_tbot.event_logger import get_info_logger, get_error_logger  # pylint: disable = import-error
 
 WELCOME_MESSAGE = "Доступные команды:\n" \
                   "set auth user:password - имя пользователя и пароль," \
