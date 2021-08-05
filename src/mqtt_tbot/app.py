@@ -162,12 +162,12 @@ def make_password_hash(user: str, password: str) -> tuple:
             hash_password = encode_password(password, received_salt)
             answer_for_client = SUCCESSFUL_MESSAGE
         else:
-            hash_password = None
+            hash_password = ""
             answer_for_client = "Неизвестный пользователь." \
                                 "Невозможно хешировать пароль."
 
     except ConnectionRefusedError:
-        hash_password = None
+        hash_password = ""
         answer_for_client = MESSAGE_CONNECTION_LOST
 
     return hash_password, answer_for_client
@@ -206,8 +206,12 @@ def run_action_show(message: str, cur_state: CurrentUserState) -> str:
     elif text == "auth":
         answer_for_client = check_auth(cur_state.user, cur_state.password)
     elif text == "online":
-        answer_for_client = get_online(db_name=cur_state.user)
-        answer_for_client = "\n".join(answer_for_client)
+
+        if cur_state.user:
+            answer_for_client = get_online(db_name=cur_state.user)
+            answer_for_client = "\n".join(answer_for_client)
+        else:
+            answer_for_client = "Требуется авторизация пользователя"
     else:
         answer_for_client = UNKNOWN_COMMAND
 

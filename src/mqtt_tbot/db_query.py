@@ -1,4 +1,5 @@
 """Модуль для взаимодействия с базой данных"""
+from datetime import timedelta
 from influxdb_client import InfluxDBClient, rest
 from urllib3.exceptions import NewConnectionError, LocationParseError
 from .config import settings  # pylint: disable = import-error
@@ -39,23 +40,30 @@ def get_online(db_name: str) -> list:
     Если таких девайсов нет, то список будет пустым.
     """
 
+    if not db_name:
+        return []
+
     db_client = connect_db()
 
     query = f'from(bucket:"{db_name}")\
-    |> range(start: -30d)\
-    |> sort(columns: ["_time"], desc: true)\
-    |> limit(n: 1)'
+    |> range(start: -24h)\
+    |> filter(fn: (r) => r._measurement == "sys_online")\
+    |> group(columns: ["_value"], mode: "by")\
+    |> last()'
+
+    devices: list = []
 
     try:
         answer = get_response_from_db(db_client, query)
     except Exception as err:  # pylint: disable = broad-except
         event_log.info(str(err))
+        return devices
 
-    devices = []
     for table in answer:
         for record in table.records:
-            last_time = record.get_time().strftime("%d.%m.%Y %H:%M:%S")
-            device_name = record.values.get("device")
+            timestamp = record.get_time() + timedelta(hours=3)
+            last_time = timestamp.strftime("%d.%m.%Y %H:%M:%S")
+            device_name = record.values.get("_value")
             devices.append(f"device: {device_name}, last time: {last_time}")
 
     return devices
