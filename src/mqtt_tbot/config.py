@@ -36,7 +36,7 @@ class Settings(BaseSettings):  # pylint: disable = too-few-public-methods
     server_host: str = "127.0.0.1"
     server_port: int = 5000
     use_ssl: bool = False
-    ssl_keyfile_path: str = SSL_KEYFILE_PATH
+    ssl_keyfile_path: str = get_full_path(SSL_KEYFILE_PATH)
 
     # telegram
     bot_name: str = "unknown bot name"
