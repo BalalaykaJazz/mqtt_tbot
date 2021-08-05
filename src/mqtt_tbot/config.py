@@ -64,6 +64,3 @@ def is_main_settings_correct(_settings: Settings) -> bool:
 
 settings = Settings(_env_file=get_full_path(".env"),
                     _env_file_encoding="utf-8")
-
-if not os.path.exists("logs"):
-    os.mkdir("logs")
