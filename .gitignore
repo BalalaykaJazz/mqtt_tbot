@@ -1,6 +1,7 @@
 # Project exclude paths
 /venv/
 /.pytest_cache/
-/src/mqtt_tbot/settings/
+/src/mqtt_tbot/settings/.env
+/src/mqtt_tbot/settings/server_cert.pem
+/src/mqtt_tbot/settings/server_key.pem
 /src/mqtt_tbot/logs/
-src/mqtt_tbot/settings/.env
